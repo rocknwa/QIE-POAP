@@ -9,7 +9,7 @@ import { poapDappAbi } from "../constants"; // Adjusted path
 
 export default function Dashboard() {
   const { address: accountAddress, isConnected, isConnecting } = useAccount();
-  const contractAddress = "0x807F3634e23ea6D91E7c683eFb86C3fB279eD3e3"; // Ensure this matches the deployed contract
+  const contractAddress = "0xdF6A1Da673B623D9e1c6c538f4653d4429284429"; // Ensure this matches the deployed contract
 
   const [newCode, setNewCode] = useState("");
   const [newNftContract, setNewNftContract] = useState("");
