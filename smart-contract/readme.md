@@ -23,8 +23,8 @@ To run this project, ensure you have the following installed:
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/rocknwa/PEOPLE.git
-   cd PEOPLE
+   git clone https://github.com/rocknwa/QIE-POAP.git
+   cd QIE-POAP
    cd smart-contract
    ```
 
@@ -34,18 +34,6 @@ To run this project, ensure you have the following installed:
    npm install
    ```
 
-   Ensure the following dependencies are included in your `package.json`:
-   ```json
-   {
-     "devDependencies": {
-       "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-       "hardhat": "^2.22.10"
-     },
-     "dependencies": {
-       "@openzeppelin/contracts": "^5.0.2"
-     }
-   }
-   ```
 
 3. **Set Up Hardhat Configuration**:
    Ensure your `hardhat.config.js` is configured. A sample configuration is:
@@ -56,42 +44,36 @@ require('dotenv').config();
 module.exports = {
   solidity: {
     version: "0.8.28",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
-      viaIR: true,
-    },
   },
-   networks: {
-  'qie-testnet': {
-      url: 'https://rpc-testnet.qie.io/',
+
+  networks: {
+    "qie-testnet": {
+      url: "https://rpc1testnet.qie.digital",
       accounts: [process.env.WALLET_KEY],
       gasPrice: 1000000000,
     },
   },
 
-etherscan: {
+  etherscan: {
     apiKey: {
       'qie-testnet': 'empty'
     },
     customChains: [
       {
         network: "qie-testnet",
-        chainId: 12345,
+        chainId: 1983,
         urls: {
-          apiURL: "https://explorer-testnet.qie.io/api",
-          browserURL: "https://explorer-testnet.qie.io"
+          apiURL: "https://testnet.qie.digital/api",   
+          browserURL: "https://testnet.qie.digital"
         }
       }
     ]
   },
+
   sourcify: {
-    enabled: false
+    enabled: false,
   },
 };
- 
  
  ```
 
@@ -190,12 +172,6 @@ Example test output:
 
   18 passing (4s)
 ```
-
-Successfully verified contract "contracts/POAP.sol:POAPDapp" for network qie-testnet:
-  - https://explorer-testnet.qie.io/address/0x807F3634e23ea6D91E7c683eFb86C3fB279eD3e3#code
-
-  Successfully verified contract "contracts/POAPnfts.sol:POAPNFT" for network qie-testnet:
-  - https://explorer-testnet.qie.io/address/0x3639dFd3A2a46a59dF535739341236a8B28CBE4C#code
 
 ## Contributing
 Contributions are welcome! To contribute:
