@@ -14,7 +14,7 @@ The DApp features a smart contract that handles code-based NFT minting, admin ma
 ## Current Development Stage
  
 
-- **Smart Contract**: A functional POAP contract (`0x807F3634e23ea6D91E7c683eFb86C3fB279eD3e3`) is deployed, supporting minting, code updates, NFT contract address management, and admin/owner roles. Features like code validation (e.g., `InvalidCode`, `MintingExpired`) and uniqueness are implemented.
+- **Smart Contract**: A functional POAP contract (`0xdF6A1Da673B623D9e1c6c538f4653d4429284429`) is deployed, supporting minting, code updates, NFT contract address management, and admin/owner roles. Features like code validation (e.g., `InvalidCode`, `MintingExpired`) and uniqueness are implemented.
 - **Frontend**:
   - **Home Page (`HomeContent.tsx`)**: Users can connect wallets, enter codes, and mint POAP NFTs with real-time feedback (e.g., toast notifications, transaction confirmation).
   - **Admin Dashboard (`Dashboard.tsx`)**: Admins and owners can update codes, NFT contracts, stop minting, and manage admin roles. Clickable refresh for code and NFT contract displays is functional, with automatic refreshes post-transaction.
