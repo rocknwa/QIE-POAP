@@ -12,7 +12,7 @@ const HomeContent = () => {
   const [code, setCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { address:  isConnected } = useAccount(); // Renamed for clarity
-  const contractAddress = "0x807F3634e23ea6D91E7c683eFb86C3fB279eD3e3"; // Replace with actual contract address
+  const contractAddress = "0xdF6A1Da673B623D9e1c6c538f4653d4429284429"; // Replace with actual contract address
 
   const {
     data: hash,
