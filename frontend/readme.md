@@ -36,8 +36,8 @@ Future enhancements include gasless minting, an NFT contract factory, and user-f
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/rocknwa/PEOPLE.git
-   cd PEOPLE
+   git clone https://github.com/rocknwa/QIE-POAP.git
+   cd QIE-POAP
    cd frontend
    ```
 2. Install dependencies:
