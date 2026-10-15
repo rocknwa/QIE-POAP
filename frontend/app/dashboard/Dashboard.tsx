@@ -1,334 +1,131 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { FormEvent, useMemo, useState } from "react";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { keccak256, parseEventLogs, toBytes } from "viem";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { CgSpinner } from "react-icons/cg";
-import { poapDappAbi } from "../constants"; // Adjusted path
+import { poapDappAbi, poapFactoryAbi, POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS } from "../constants";
 
 export default function Dashboard() {
-  const { address: accountAddress, isConnected, isConnecting } = useAccount();
-  const contractAddress = "0xdF6A1Da673B623D9e1c6c538f4653d4429284429"; // Ensure this matches the deployed contract
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const [busy, setBusy] = useState(false);
+  const [createdNft, setCreatedNft] = useState<`0x${string}` | "">("");
+  const [name, setName] = useState("");
+  const [symbol, setSymbol] = useState("");
+  const [description, setDescription] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [claimCode, setClaimCode] = useState("");
+  const [deadline, setDeadline] = useState("");
 
-  const [newCode, setNewCode] = useState("");
-  const [newNftContract, setNewNftContract] = useState("");
-  const [adminToAdd, setAdminToAdd] = useState("");
-  const [adminToRemove, setAdminToRemove] = useState("");
+  const enabled = Boolean(POAP_DAPP_ADDRESS && address);
+  const { data: owner } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "owner", query: { enabled } });
+  const { data: admin } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled } });
+  const { data: currentNft, refetch: refetchNft } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: currentDeadline, refetch: refetchDeadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
 
-  // Read owner from contract
-  const { data: ownerAddress, isLoading: isLoadingOwner, refetch: refetchOwner } = useReadContract({
-    address: contractAddress as `0x${string}`,
-    abi: poapDappAbi,
-    functionName: "owner",
-    // Only query when connected
-  });
+  const canAdmin = Boolean(address && (admin || owner?.toLowerCase() === address.toLowerCase()));
+  const deadlineText = useMemo(() => currentDeadline && currentDeadline > 0n ? new Date(Number(currentDeadline) * 1000).toLocaleString() : "Not configured", [currentDeadline]);
 
-  // Read current code (only admins)
-  const { data: currentCode, isLoading: isLoadingCode, isError: isCodeError, refetch: refetchCode } = useReadContract({
-    address: contractAddress as `0x${string}`,
-    abi: poapDappAbi,
-    functionName: "getCode",
-    account: accountAddress, // Pass account to enforce access control
-  });
+  async function createEvent(e: FormEvent) {
+    e.preventDefault();
+    if (!canAdmin || !POAP_DAPP_ADDRESS || !POAP_FACTORY_ADDRESS || !publicClient) return toast.error("Admin wallet and deployed contracts are required.");
+    if (!image || !name.trim() || !symbol.trim() || !description.trim()) return toast.error("Complete the NFT details and artwork.");
+    if (symbol.trim().length > 16) return toast.error("Keep the NFT symbol at 16 characters or fewer.");
 
-  // Read NFT contract address
-  const { data: currentNftContract, isLoading: isLoadingNftContract, refetch: refetchNftContract } = useReadContract({
-    address: contractAddress as `0x${string}`,
-    abi: poapDappAbi,
-    functionName: "poapNftContract",
-  });
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.append("image", image);
+      form.append("name", name.trim());
+      form.append("description", description.trim());
+      const upload = await fetch("/api/ipfs/event-metadata", { method: "POST", body: form });
+      const uploaded = await upload.json();
+      if (!upload.ok) throw new Error(uploaded.error || "Metadata upload failed");
 
-  // Infer admin status based on successful getCode call
-  const isAdmin = !isLoadingCode && !isCodeError && currentCode !== undefined && currentCode !== null;
+      const hash = await writeContractAsync({
+        address: POAP_FACTORY_ADDRESS,
+        abi: poapFactoryAbi,
+        functionName: "createEventPOAP",
+        args: [name.trim(), symbol.trim(), uploaded.metadataURI, POAP_DAPP_ADDRESS],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const logs = parseEventLogs({ abi: poapFactoryAbi, logs: receipt.logs, eventName: "EventPOAPCreated" });
+      const nft = logs[0]?.args.poap;
+      if (!nft) throw new Error("Factory event did not contain the NFT address");
+      setCreatedNft(nft);
+      toast.success("Event NFT created. Activate it below to use it for claims.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to create event NFT");
+    } finally { setBusy(false); }
+  }
 
-  // Check if the connected address is the owner
-  const isOwner = !isLoadingOwner && ownerAddress === accountAddress;
+  async function activateNft() {
+    const nft = createdNft || (currentNft as `0x${string}` | undefined);
+    if (!POAP_DAPP_ADDRESS || !nft || !publicClient) return toast.error("Create an NFT first.");
+    setBusy(true);
+    try {
+      const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "updateNFTContract", args: [nft] });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refetchNft();
+      toast.success("Event NFT activated for claims.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Activation failed"); }
+    finally { setBusy(false); }
+  }
 
-  // Write contracts
-  const { writeContract: updateCodeWrite, isPending: isPendingUpdateCode, data: updateCodeHash } = useWriteContract();
-  const { isLoading: isConfirmingUpdateCode, isSuccess: isUpdateCodeSuccess } = useWaitForTransactionReceipt({ hash: updateCodeHash });
+  async function configureClaim(e: FormEvent) {
+    e.preventDefault();
+    if (!POAP_DAPP_ADDRESS || !publicClient || !claimCode.trim() || !deadline) return toast.error("Enter a claim code and deadline.");
+    const unixDeadline = BigInt(Math.floor(new Date(deadline).getTime() / 1000));
+    if (unixDeadline <= BigInt(Math.floor(Date.now() / 1000))) return toast.error("Deadline must be in the future.");
+    const hashOfCode = keccak256(toBytes(claimCode.trim()));
 
-  const { writeContract: updateNftWrite, isPending: isPendingUpdateNft, data: updateNftHash } = useWriteContract();
-  const { isLoading: isConfirmingUpdateNft, isSuccess: isUpdateNftSuccess } = useWaitForTransactionReceipt({ hash: updateNftHash });
+    setBusy(true);
+    try {
+      const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "configureClaim", args: [hashOfCode, unixDeadline] });
+      await publicClient.waitForTransactionReceipt({ hash });
+      await refetchDeadline();
+      setClaimCode("");
+      toast.success("Claim code hash and deadline configured. Save the plaintext code securely; it cannot be recovered from the contract.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Claim configuration failed"); }
+    finally { setBusy(false); }
+  }
 
-  const { writeContract: stopMintingWrite, isPending: isPendingStopMinting, data: stopMintingHash } = useWriteContract();
-  const { isLoading: isConfirmingStopMinting, isSuccess: isStopMintingSuccess } = useWaitForTransactionReceipt({ hash: stopMintingHash });
-
-  const { writeContract: addAdminWrite, isPending: isPendingAddAdmin, data: addAdminHash } = useWriteContract();
-  const { isLoading: isConfirmingAddAdmin, isSuccess: isAddAdminSuccess } = useWaitForTransactionReceipt({ hash: addAdminHash });
-
-  const { writeContract: removeAdminWrite, isPending: isPendingRemoveAdmin, data: removeAdminHash } = useWriteContract();
-  const { isLoading: isConfirmingRemoveAdmin, isSuccess: isRemoveAdminSuccess } = useWaitForTransactionReceipt({ hash: removeAdminHash });
-
-  // Handlers with success feedback
-  const handleUpdateCode = () => {
-    if (!newCode.trim()) {
-      toast.error("Please enter a valid code.", { position: "top-center", autoClose: 5000 });
-      return;
-    }
-    updateCodeWrite({
-      address: contractAddress as `0x${string}`,
-      abi: poapDappAbi,
-      functionName: "updateCode",
-      args: [newCode],
-    });
-  };
-
-  const handleUpdateNftContract = () => {
-    if (!newNftContract.trim() || !/^0x[a-fA-F0-9]{40}$/.test(newNftContract)) {
-      toast.error("Please enter a valid NFT contract address.", { position: "top-center", autoClose: 5000 });
-      return;
-    }
-    updateNftWrite({
-      address: contractAddress as `0x${string}`,
-      abi: poapDappAbi,
-      functionName: "updateNFTContract",
-      args: [newNftContract as `0x${string}`],
-    });
-  };
-
-  const handleStopMinting = () => {
-    stopMintingWrite({
-      address: contractAddress as `0x${string}`,
-      abi: poapDappAbi,
-      functionName: "stopMinting",
-    });
-  };
-
-  const handleAddAdmin = () => {
-    if (!adminToAdd.trim() || !/^0x[a-fA-F0-9]{40}$/.test(adminToAdd)) {
-      toast.error("Please enter a valid admin address.", { position: "top-center", autoClose: 5000 });
-      return;
-    }
-    addAdminWrite({
-      address: contractAddress as `0x${string}`,
-      abi: poapDappAbi,
-      functionName: "addAdmin",
-      args: [adminToAdd as `0x${string}`],
-    });
-  };
-
-  const handleRemoveAdmin = () => {
-    if (!adminToRemove.trim() || !/^0x[a-fA-F0-9]{40}$/.test(adminToRemove)) {
-      toast.error("Please enter a valid admin address.", { position: "top-center", autoClose: 5000 });
-      return;
-    }
-    removeAdminWrite({
-      address: contractAddress as `0x${string}`,
-      abi: poapDappAbi,
-      functionName: "removeAdmin",
-      args: [adminToRemove as `0x${string}`],
-    });
-  };
-
-  // Effect for success notifications and initial refresh
-  useEffect(() => {
-    if (isConnected && !isConnecting) {
-      refetchOwner();
-      refetchCode();
-      refetchNftContract();
-    }
-    if (isUpdateCodeSuccess && updateCodeHash) {
-      toast.success("Code updated successfully!", { position: "top-center", autoClose: 5000 });
-      setNewCode("");
-      refetchCode();
-    }
-    if (isUpdateNftSuccess && updateNftHash) {
-      toast.success("NFT contract updated successfully!", { position: "top-center", autoClose: 5000 });
-      setNewNftContract("");
-      refetchNftContract();
-    }
-    if (isStopMintingSuccess && stopMintingHash) {
-      toast.success("Minting stopped successfully!", { position: "top-center", autoClose: 5000 });
-    }
-    if (isAddAdminSuccess && addAdminHash) {
-      toast.success("Admin added successfully!", { position: "top-center", autoClose: 5000 });
-      setAdminToAdd("");
-    }
-    if (isRemoveAdminSuccess && removeAdminHash) {
-      toast.success("Admin removed successfully!", { position: "top-center", autoClose: 5000 });
-      setAdminToRemove("");
-    }
-  }, [
-    isConnected,
-    isConnecting,
-    isUpdateCodeSuccess,
-    isUpdateNftSuccess,
-    isStopMintingSuccess,
-    isAddAdminSuccess,
-    isRemoveAdminSuccess,
-    updateCodeHash,
-    updateNftHash,
-    stopMintingHash,
-    addAdminHash,
-    removeAdminHash,
-    refetchOwner,
-    refetchCode,
-    refetchNftContract,
-  ]);
-
-  // Handlers for refreshing
-  const handleRefreshCode = () => {
-    refetchCode();
-  };
-
-  const handleRefreshNftContract = () => {
-    refetchNftContract();
-  };
+  if (!POAP_DAPP_ADDRESS || !POAP_FACTORY_ADDRESS) return <main className="min-h-screen bg-purple-950 text-white p-8">Set NEXT_PUBLIC_POAP_DAPP_ADDRESS and NEXT_PUBLIC_POAP_FACTORY_ADDRESS after the Bohr deployment.</main>;
 
   return (
-    <div id="webcrumbs">
-      <div className="w-full max-w-[1440px] mx-auto bg-gradient-to-b from-purple-900 to-purple-700 min-h-screen px-4 sm:px-6 lg:px-8">
-        <header className="p-4 sm:p-6 lg:p-8">
-          <nav className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-                <span className="material-symbols-outlined text-purple-300">person</span>
-              </div>
-              <div>
-                <h2 className="text-white font-semibold">
-                  {accountAddress ? `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}` : "Not Connected"}
-                </h2>
-                <p className="text-purple-200 text-sm">
-                  {(isLoadingOwner || isLoadingCode) && isConnected ? "Loading..." : isOwner ? "Owner" : isAdmin ? "Admin" : "User"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <button className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all">
-                <span className="material-symbols-outlined text-white">notifications</span>
-              </button>
-              <button className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all">
-                <span className="material-symbols-outlined text-white">settings</span>
-              </button>
-            </div>
-          </nav>
-
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 sm:p-8 space-y-6">
-            <h2 className="text-2xl font-bold text-white">Admin Dashboard</h2>
-
-            {/* Current State with Refresh */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white/5 rounded-xl p-4">
-                <h3 className="text-lg font-semibold text-white">Current NFT Contract</h3>
-                <button
-                  onClick={handleRefreshNftContract}
-                  className="text-purple-200 hover:text-purple-100 transition-colors w-full text-left"
-                  disabled={isLoadingNftContract}
-                >
-                  {isLoadingNftContract ? <CgSpinner className="animate-spin inline" /> : currentNftContract ? String(currentNftContract) : "Not set"}
-                </button>
-              </div>
-              <div className="bg-white/5 rounded-xl p-4">
-                <h3 className="text-lg font-semibold text-white">Current Code</h3>
-                <button
-                  onClick={handleRefreshCode}
-                  className="text-purple-200 hover:text-purple-100 transition-colors w-full text-left"
-                  disabled={isLoadingCode}
-                >
-                  {isLoadingCode ? <CgSpinner className="animate-spin inline" /> : currentCode ? String(currentCode) : "Not set"}
-                </button>
-              </div>
-            </div>
-
-            {/* Admin Actions */}
-            {(isAdmin || isOwner) && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-purple-200 mb-1">Update Code</label>
-                  <input
-                    type="text"
-                    value={newCode}
-                    onChange={(e) => setNewCode(e.target.value)}
-                    className="w-full p-2 rounded-lg bg-white/10 text-white"
-                    placeholder="Enter new code"
-                  />
-                  <button
-                    onClick={handleUpdateCode}
-                    disabled={isPendingUpdateCode || isConfirmingUpdateCode}
-                    className="mt-2 w-full p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 disabled:opacity-50"
-                  >
-                    {isPendingUpdateCode || isConfirmingUpdateCode ? <CgSpinner className="animate-spin mx-auto" /> : "Update Code"}
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-purple-200 mb-1">Update NFT Contract</label>
-                  <input
-                    type="text"
-                    value={newNftContract}
-                    onChange={(e) => setNewNftContract(e.target.value)}
-                    className="w-full p-2 rounded-lg bg-white/10 text-white"
-                    placeholder="0x..."
-                  />
-                  <button
-                    onClick={handleUpdateNftContract}
-                    disabled={isPendingUpdateNft || isConfirmingUpdateNft}
-                    className="mt-2 w-full p-2 bg-purple-600 text-white rounded-lg hover:bg-purple-500 disabled:opacity-50"
-                  >
-                    {isPendingUpdateNft || isConfirmingUpdateNft ? <CgSpinner className="animate-spin mx-auto" /> : "Update NFT Contract"}
-                  </button>
-                </div>
-
-                <button
-                  onClick={handleStopMinting}
-                  disabled={isPendingStopMinting || isConfirmingStopMinting}
-                  className="w-full p-2 bg-red-600 text-white rounded-lg hover:bg-red-500 disabled:opacity-50"
-                >
-                  {isPendingStopMinting || isConfirmingStopMinting ? <CgSpinner className="animate-spin mx-auto" /> : "Stop Minting"}
-                </button>
-              </div>
-            )}
-
-            {/* Owner Actions */}
-            {isOwner && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-purple-200 mb-1">Add Admin</label>
-                  <input
-                    type="text"
-                    value={adminToAdd}
-                    onChange={(e) => setAdminToAdd(e.target.value)}
-                    className="w-full p-2 rounded-lg bg-white/10 text-white"
-                    placeholder="0x..."
-                  />
-                  <button
-                    onClick={handleAddAdmin}
-                    disabled={isPendingAddAdmin || isConfirmingAddAdmin}
-                    className="mt-2 w-full p-2 bg-green-600 text-white rounded-lg hover:bg-green-500 disabled:opacity-50"
-                  >
-                    {isPendingAddAdmin || isConfirmingAddAdmin ? <CgSpinner className="animate-spin mx-auto" /> : "Add Admin"}
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-purple-200 mb-1">Remove Admin</label>
-                  <input
-                    type="text"
-                    value={adminToRemove}
-                    onChange={(e) => setAdminToRemove(e.target.value)}
-                    className="w-full p-2 rounded-lg bg-white/10 text-white"
-                    placeholder="0x..."
-                  />
-                  <button
-                    onClick={handleRemoveAdmin}
-                    disabled={isPendingRemoveAdmin || isConfirmingRemoveAdmin}
-                    className="mt-2 w-full p-2 bg-red-600 text-white rounded-lg hover:bg-red-500 disabled:opacity-50"
-                  >
-                    {isPendingRemoveAdmin || isConfirmingRemoveAdmin ? <CgSpinner className="animate-spin mx-auto" /> : "Remove Admin"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!isConnected && (
-              <div className="text-center text-purple-200">Please connect your wallet to access the dashboard.</div>
-            )}
-          </div>
-        </header>
-      </div>
+    <main className="min-h-screen bg-gradient-to-b from-purple-950 to-purple-800 text-white p-4 sm:p-8">
       <ToastContainer />
-    </div>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <header><h1 className="text-3xl font-bold">PEOPLE Event Admin</h1><p className="text-purple-200 mt-2">Create a soulbound attendance NFT and configure the single-event Bohr claim flow.</p></header>
+        <section className="bg-white/10 rounded-2xl p-5 grid md:grid-cols-2 gap-4 text-sm">
+          <div><span className="text-purple-300">Wallet</span><p className="break-all">{address || "Not connected"}</p></div>
+          <div><span className="text-purple-300">Role</span><p>{canAdmin ? "Owner / Admin" : "User"}</p></div>
+          <div><span className="text-purple-300">Active NFT</span><p className="break-all">{String(currentNft || "Not configured")}</p></div>
+          <div><span className="text-purple-300">Claim deadline</span><p>{deadlineText}</p></div>
+        </section>
+
+        {canAdmin && <>
+          <form onSubmit={createEvent} className="bg-white/10 rounded-2xl p-5 space-y-4">
+            <h2 className="text-xl font-semibold">1. Create event attendance NFT</h2>
+            <div className="grid md:grid-cols-2 gap-4"><input className="p-3 rounded bg-white/10" placeholder="NFT name" value={name} onChange={e=>setName(e.target.value)} maxLength={120}/><input className="p-3 rounded bg-white/10" placeholder="Symbol (e.g. BOTPOAP)" value={symbol} onChange={e=>setSymbol(e.target.value)} maxLength={16}/></div>
+            <textarea className="p-3 rounded bg-white/10 w-full min-h-28" placeholder="Event description" value={description} onChange={e=>setDescription(e.target.value)} maxLength={1500}/>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>setImage(e.target.files?.[0] || null)} />
+            <button disabled={busy} className="px-5 py-3 rounded bg-purple-500 disabled:opacity-50">{busy ? "Working…" : "Upload metadata & create NFT"}</button>
+            {createdNft && <div className="p-3 rounded bg-green-500/10"><p className="break-all">Created: {createdNft}</p><button type="button" onClick={activateNft} disabled={busy} className="mt-3 px-4 py-2 rounded bg-green-600">Activate for this event</button></div>}
+          </form>
+
+          <form onSubmit={configureClaim} className="bg-white/10 rounded-2xl p-5 space-y-4">
+            <h2 className="text-xl font-semibold">2. Configure attendance claim</h2>
+            <p className="text-sm text-purple-200">Only the hash is stored in contract state. Keep the plaintext code separately. Claim transactions still reveal the submitted code in transaction calldata.</p>
+            <input className="p-3 rounded bg-white/10 w-full" type="password" autoComplete="new-password" placeholder="Event claim code" value={claimCode} onChange={e=>setClaimCode(e.target.value)} />
+            <input className="p-3 rounded bg-white/10 w-full" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)} />
+            <button disabled={busy} className="px-5 py-3 rounded bg-purple-500 disabled:opacity-50">Configure claim</button>
+          </form>
+        </>}
+      </div>
+    </main>
   );
 }

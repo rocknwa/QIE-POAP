@@ -6,13 +6,13 @@ import { useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagm
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { CgSpinner } from "react-icons/cg"; // Ensure react-icons is installed
-import { poapDappAbi } from "./constants"; // Adjust path as needed
+import { poapDappAbi, POAP_DAPP_ADDRESS } from "./constants"; // Adjust path as needed
 
 const HomeContent = () => {
   const [code, setCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { address:  isConnected } = useAccount(); // Renamed for clarity
-  const contractAddress = "0xdF6A1Da673B623D9e1c6c538f4653d4429284429"; // Replace with actual contract address
+  const { isConnected } = useAccount();
+  const contractAddress = POAP_DAPP_ADDRESS;
 
   const {
     data: hash,
@@ -36,6 +36,11 @@ const HomeContent = () => {
       return;
     }
 
+    if (!contractAddress) {
+      setErrorMessage("Bohr contract address is not configured.");
+      return;
+    }
+
     if (!code.trim()) {
       setErrorMessage("Please enter a valid code.");
       toast.error("Please enter a valid code.", { position: "top-center", autoClose: 5000 });
@@ -44,7 +49,7 @@ const HomeContent = () => {
 
     try {
       const txHash = await writeContractAsync({
-        address: contractAddress as `0x${string}`,
+        address: contractAddress!,
         abi: poapDappAbi,
         functionName: "mint",
         args: [code],
@@ -73,7 +78,7 @@ const HomeContent = () => {
         setErrorMessage("The provided code is invalid.");
         toast.error("Invalid code.", { position: "top-center", autoClose: 5000 });
       } else if (message.includes("MintingExpired")) {
-        setErrorMessage("The code has expired (more than 24 hours since last update).");
+        setErrorMessage("The event claim deadline has passed.");
         toast.error("Code has expired.", { position: "top-center", autoClose: 5000 });
       } else if (message.includes("AlreadyMinted")) {
         setErrorMessage("You have already minted this POAP.");

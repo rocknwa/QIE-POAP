@@ -1,47 +1,60 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IPOAPNFT {
-    function mint(address to) external;
+    function mint(address to) external returns (uint256 tokenId);
 }
 
+/// @title POAPDapp
+/// @notice Single-event attendance claim controller.
 contract POAPDapp is Ownable {
     address public poapNftContract;
-    string private validCode;
-    uint256 private codeUpdateTime; // Timestamp of the last code update
+    bytes32 public codeHash;
+    uint256 public claimDeadline;
 
-    mapping(address => bool) private admins;
+    mapping(address => bool) public admins;
+    mapping(address => bool) public hasClaimed;
 
-    // Custom errors for gas savings
     error NotAuthorized();
     error MintingDisabled();
     error InvalidCode();
     error MintingExpired();
     error AlreadyMinted();
+    error InvalidDeadline();
+    error InvalidCodeHash();
+    error InvalidNFTContract();
+    error ZeroAddress();
 
     modifier onlyAdmin() {
         if (!admins[msg.sender]) revert NotAuthorized();
         _;
     }
 
-    event CodeUpdated(string newCode);
-    event NFTContractUpdated(address newContract);
+    event ClaimConfigured(bytes32 indexed codeHash, uint256 claimDeadline);
+    event NFTContractUpdated(address indexed newContract);
     event MintingStopped();
+    event AdminUpdated(address indexed admin, bool enabled);
+    event AttendanceClaimed(address indexed attendee, address indexed nftContract, uint256 tokenId);
 
     constructor() {
         admins[msg.sender] = true;
+        emit AdminUpdated(msg.sender, true);
     }
 
-    function updateCode(string calldata newCode) external onlyAdmin {
-        validCode = newCode;
-        codeUpdateTime = block.timestamp;
-        emit CodeUpdated(newCode);
+    /// @notice Configure a claim without exposing the plaintext code in contract storage/events.
+    /// @dev Frontends should compute keccak256(abi.encodePacked(code)) off-chain.
+    function configureClaim(bytes32 newCodeHash, uint256 newClaimDeadline) external onlyAdmin {
+        if (newCodeHash == bytes32(0)) revert InvalidCodeHash();
+        if (newClaimDeadline <= block.timestamp) revert InvalidDeadline();
+        codeHash = newCodeHash;
+        claimDeadline = newClaimDeadline;
+        emit ClaimConfigured(newCodeHash, newClaimDeadline);
     }
 
     function updateNFTContract(address newContract) external onlyAdmin {
+        if (newContract == address(0) || newContract.code.length == 0) revert InvalidNFTContract();
         poapNftContract = newContract;
         emit NFTContractUpdated(newContract);
     }
@@ -52,31 +65,26 @@ contract POAPDapp is Ownable {
     }
 
     function mint(string calldata code) external {
-        if (poapNftContract == address(0)) revert MintingDisabled();
-        if (keccak256(abi.encodePacked(code)) != keccak256(abi.encodePacked(validCode))) revert InvalidCode();
-        if (block.timestamp > codeUpdateTime + 24 days) revert MintingExpired();
-        if (_hasMinted(msg.sender)) revert AlreadyMinted();
+        address nft = poapNftContract;
+        if (nft == address(0)) revert MintingDisabled();
+        if (block.timestamp > claimDeadline) revert MintingExpired();
+        if (keccak256(abi.encodePacked(code)) != codeHash) revert InvalidCode();
+        if (hasClaimed[msg.sender]) revert AlreadyMinted();
 
-        IPOAPNFT(poapNftContract).mint(msg.sender);
+        // Checks-effects-interactions: record the claim before calling the NFT contract.
+        hasClaimed[msg.sender] = true;
+        uint256 tokenId = IPOAPNFT(nft).mint(msg.sender);
+        emit AttendanceClaimed(msg.sender, nft, tokenId);
     }
 
-    function addAdmin(address _admin) external onlyOwner {
-        admins[_admin] = true;
+    function addAdmin(address admin) external onlyOwner {
+        if (admin == address(0)) revert ZeroAddress();
+        admins[admin] = true;
+        emit AdminUpdated(admin, true);
     }
 
-    function removeAdmin(address _admin) external onlyOwner {
-        admins[_admin] = false;
-    }
-
-    // Only admins can view the code
-    function getCode() external view onlyAdmin returns (string memory) {
-        return validCode;
-    }
-
-    // Mark as private and pure/view for gas saving
-    function _hasMinted(address user) private view returns (bool) {
-        IERC721 poapNft = IERC721(poapNftContract);
-        return poapNft.balanceOf(user) > 0;
+    function removeAdmin(address admin) external onlyOwner {
+        admins[admin] = false;
+        emit AdminUpdated(admin, false);
     }
 }
- 
