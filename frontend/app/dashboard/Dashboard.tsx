@@ -27,7 +27,13 @@ export default function Dashboard() {
   const { data: currentDeadline, refetch: refetchDeadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
 
   const canAdmin = Boolean(address && (admin || owner?.toLowerCase() === address.toLowerCase()));
-  const deadlineText = useMemo(() => currentDeadline && currentDeadline > 0n ? new Date(Number(currentDeadline) * 1000).toLocaleString() : "Not configured", [currentDeadline]);
+  const deadlineText = useMemo(
+  () =>
+    currentDeadline && currentDeadline > BigInt(0)
+      ? new Date(Number(currentDeadline) * 1000).toLocaleString()
+      : "Not configured",
+  [currentDeadline]
+);
 
   async function createEvent(e: FormEvent) {
     e.preventDefault();
