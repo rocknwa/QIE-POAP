@@ -47,7 +47,7 @@ const eventPoapAbi = [
 const EXPLORER = "https://scan.bohr.life";
 const DEFAULT_IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 const MAX_SCAN = 5000;
-const MULTICALL_BATCH = 200;
+const RPC_BATCH = 25;
 
 function ipfsToHttp(uri) {
   if (!uri) return "";
@@ -65,16 +65,26 @@ function shortAddress(value) {
   return `${value.slice(0, 6)}…${value.slice(-4)}`;
 }
 
-async function multicallInBatches(publicClient, contracts) {
+async function readContractsWithoutMulticall(publicClient, calls) {
   const results = [];
-  for (let i = 0; i < contracts.length; i += MULTICALL_BATCH) {
-    const batch = contracts.slice(i, i + MULTICALL_BATCH);
-    const batchResults = await publicClient.multicall({
-      contracts: batch,
-      allowFailure: true,
-    });
+
+  for (let i = 0; i < calls.length; i += RPC_BATCH) {
+    const batch = calls.slice(i, i + RPC_BATCH);
+
+    const batchResults = await Promise.all(
+      batch.map(async (call) => {
+        try {
+          const result = await publicClient.readContract(call);
+          return { status: "success", result };
+        } catch (error) {
+          return { status: "failure", error };
+        }
+      })
+    );
+
     results.push(...batchResults);
   }
+
   return results;
 }
 
@@ -150,7 +160,7 @@ export default function Events() {
         args: [BigInt(index)],
       }));
 
-      const ownerResults = await multicallInBatches(publicClient, ownerCalls);
+      const ownerResults = await readContractsWithoutMulticall(publicClient, ownerCalls);
       const wallet = address.toLowerCase();
       const ownedTokenIds = ownerResults.flatMap((result, index) => {
         if (
@@ -167,7 +177,7 @@ export default function Events() {
         return;
       }
 
-      const uriResults = await multicallInBatches(
+      const uriResults = await readContractsWithoutMulticall(
         publicClient,
         ownedTokenIds.map((tokenId) => ({
           address: activeNft,
