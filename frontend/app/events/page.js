@@ -60,11 +60,6 @@ function ipfsToHttp(uri) {
   return uri;
 }
 
-function shortAddress(value) {
-  if (!value) return "";
-  return `${value.slice(0, 6)}…${value.slice(-4)}`;
-}
-
 async function readContractsWithoutMulticall(publicClient, calls) {
   const results = [];
 
@@ -95,6 +90,7 @@ export default function Events() {
   const [collectionInfo, setCollectionInfo] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
 
   const { data: currentNft, isLoading: nftLoading } = useReadContract({
     address: POAP_DAPP_ADDRESS,
@@ -235,8 +231,12 @@ export default function Events() {
   }, [publicClient, address, activeNft]);
 
   useEffect(() => {
-    loadPoaps();
-  }, [loadPoaps]);
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (mounted) loadPoaps();
+  }, [mounted, loadPoaps]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-purple-950 via-purple-900 to-purple-800 text-white px-4 py-8 sm:px-6 lg:px-8">
@@ -263,7 +263,7 @@ export default function Events() {
             <button
               type="button"
               onClick={loadPoaps}
-              disabled={loading || !isConnected}
+              disabled={loading || !mounted || !isConnected}
               className="rounded-full bg-purple-500 px-4 py-2 text-sm font-semibold transition hover:bg-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? "Refreshing…" : "Refresh"}
@@ -277,7 +277,7 @@ export default function Events() {
               Connected wallet
             </p>
             <p className="mt-1 break-all font-medium">
-              {address || "Connect a wallet to view your POAPs"}
+              {mounted && address ? address : "Connect a wallet to view your POAPs"}
             </p>
           </div>
           <div>
@@ -306,13 +306,13 @@ export default function Events() {
           </div>
         )}
 
-        {POAP_DAPP_ADDRESS && !isConnected && (
+        {mounted && POAP_DAPP_ADDRESS && !isConnected && (
           <div className="rounded-2xl border border-purple-300/20 bg-white/10 p-8 text-center text-purple-100">
             Connect your wallet from the navigation to see the POAPs it owns.
           </div>
         )}
 
-        {isConnected && !nftLoading && !activeNft && (
+        {mounted && isConnected && !nftLoading && !activeNft && (
           <div className="rounded-2xl border border-purple-300/20 bg-white/10 p-8 text-center text-purple-100">
             No attendance NFT collection is currently active in PEOPLE.
           </div>
@@ -331,7 +331,7 @@ export default function Events() {
           </div>
         )}
 
-        {!loading && isConnected && activeNft && !error && poaps.length === 0 && (
+        {mounted && !loading && isConnected && activeNft && !error && poaps.length === 0 && (
           <div className="rounded-2xl border border-purple-300/20 bg-white/10 p-8 text-center">
             <h2 className="text-xl font-semibold">No POAP found for this wallet</h2>
             <p className="mt-2 text-purple-200">
@@ -341,7 +341,7 @@ export default function Events() {
           </div>
         )}
 
-        {!loading && poaps.length > 0 && (
+        {mounted && !loading && poaps.length > 0 && (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {poaps.map((poap) => (
               <article
@@ -391,66 +391,14 @@ export default function Events() {
                     </div>
                   )}
 
-                  <dl className="space-y-3 text-sm">
-                    <div>
-                      <dt className="text-purple-300">Collection</dt>
-                      <dd className="mt-1 break-all font-mono text-xs">
-                        {activeNft}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-purple-300">tokenURI</dt>
-                      <dd className="mt-1 break-all font-mono text-xs">
-                        {poap.tokenURI || "Unavailable"}
-                      </dd>
-                    </div>
-                    {poap.metadata?.image && (
-                      <div>
-                        <dt className="text-purple-300">Image URI</dt>
-                        <dd className="mt-1 break-all font-mono text-xs">
-                          {poap.metadata.image}
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {poap.metadataURL && (
-                      <a
-                        href={poap.metadataURL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full bg-purple-500 px-3 py-2 text-xs font-semibold transition hover:bg-purple-400"
-                      >
-                        View raw metadata
-                      </a>
-                    )}
-                    {poap.imageURL && (
-                      <a
-                        href={poap.imageURL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-purple-300/30 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20"
-                      >
-                        Open IPFS image
-                      </a>
-                    )}
+                  <div className="pt-1">
                     <a
                       href={`${EXPLORER}/token/${activeNft}/instance/${poap.tokenId.toString()}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="rounded-full border border-purple-300/30 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20"
+                      className="inline-flex rounded-full bg-purple-500 px-4 py-2 text-sm font-semibold transition hover:bg-purple-400"
                     >
-                      View token on Bohr
-                    </a>
-                    <a
-                      href={`${EXPLORER}/address/${activeNft}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={activeNft}
-                      className="rounded-full border border-purple-300/30 bg-white/10 px-3 py-2 text-xs font-semibold transition hover:bg-white/20"
-                    >
-                      Collection {shortAddress(activeNft)}
+                      View NFT on Bohr Explorer
                     </a>
                   </div>
                 </div>
