@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
-import { keccak256, parseEventLogs, toBytes, zeroAddress } from "viem";
+import { isAddress, keccak256, parseEventLogs, toBytes, zeroAddress } from "viem";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { poapDappAbi, poapFactoryAbi, POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS } from "../constants";
@@ -26,6 +26,7 @@ export default function Dashboard() {
   const [preview, setPreview] = useState("");
   const [claimCode, setClaimCode] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [adminAddress, setAdminAddress] = useState("");
 
   useEffect(() => setMounted(true), []);
   useEffect(() => {
@@ -44,9 +45,17 @@ export default function Dashboard() {
   const { data: currentNft, refetch: refetchNft } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
   const { data: currentDeadline, refetch: refetchDeadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
 
-  const canConfigure = Boolean(address && (admin || owner?.toLowerCase() === address.toLowerCase()));
-  const canCreate = Boolean(address && (factoryAdmin || factoryOwner?.toLowerCase() === address.toLowerCase()));
+  const isDappOwner = Boolean(address && owner?.toLowerCase() === address.toLowerCase());
+  const isFactoryOwner = Boolean(address && factoryOwner?.toLowerCase() === address.toLowerCase());
+  const isOwner = isDappOwner || isFactoryOwner;
+  const isDappAdmin = Boolean(admin);
+  const isFactoryAdmin = Boolean(factoryAdmin);
+  const canConfigure = isDappOwner || isDappAdmin;
+  const canCreate = isFactoryOwner || isFactoryAdmin;
   const canAdmin = canConfigure || canCreate;
+  const roleLabel = isOwner
+    ? "Owner"
+    : `${isFactoryAdmin ? "Factory Admin" : ""}${isFactoryAdmin && isDappAdmin ? " · " : ""}${isDappAdmin ? "Claim Admin" : ""}` || "Organizer";
   const activeConfigured = Boolean(currentNft && currentNft !== zeroAddress);
   const deadlineText = useMemo(() => currentDeadline && currentDeadline > BigInt(0) ? new Date(Number(currentDeadline) * 1000).toLocaleString() : "Not configured", [currentDeadline]);
   const deadlineExpired = Boolean(currentDeadline && currentDeadline > BigInt(0) && Number(currentDeadline) * 1000 <= Date.now());
@@ -122,6 +131,35 @@ export default function Dashboard() {
     finally { setBusy(false); }
   }
 
+  async function updateAdminAccess(scope: "dapp" | "factory", action: "add" | "remove") {
+    if (!publicClient) return;
+    const target = adminAddress.trim();
+    if (!isAddress(target)) return toast.error("Enter a valid EVM wallet address.");
+
+    const isScopeOwner = scope === "dapp" ? isDappOwner : isFactoryOwner;
+    if (!isScopeOwner) return toast.error(`Only the ${scope === "dapp" ? "controller" : "factory"} owner can manage this access.`);
+
+    const contractAddress = scope === "dapp" ? POAP_DAPP_ADDRESS : POAP_FACTORY_ADDRESS;
+    const abi = scope === "dapp" ? poapDappAbi : poapFactoryAbi;
+    if (!contractAddress) return toast.error("Contract address is not configured.");
+
+    setBusy(true);
+    try {
+      const hash = await writeContractAsync({
+        address: contractAddress,
+        abi,
+        functionName: action === "add" ? "addAdmin" : "removeAdmin",
+        args: [target],
+      } as any);
+      await publicClient.waitForTransactionReceipt({ hash });
+      toast.success(`${scope === "dapp" ? "Claim" : "Factory"} admin ${action === "add" ? "added" : "removed"}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update admin access");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!POAP_DAPP_ADDRESS || !POAP_FACTORY_ADDRESS) return <main className="people-shell py-20"><div className="people-card p-8 text-white">Configure the deployed Bohr contract addresses in the frontend environment before opening the dashboard.</div></main>;
 
   if (!mounted) return <main className="people-shell py-20"><div className="h-72 animate-pulse rounded-2xl bg-white/[0.03]" /></main>;
@@ -143,7 +181,7 @@ export default function Dashboard() {
           <Metric label="Active event" value={activeConfigured ? "Configured" : "Not configured"} icon="event_available" tone={activeConfigured ? "success" : "muted"} />
           <Metric label="NFT collection" value={activeConfigured ? shortAddress(String(currentNft)) : "—"} icon="token" />
           <Metric label="Claim deadline" value={deadlineExpired ? "Expired" : deadlineText} icon="schedule" tone={deadlineExpired ? "danger" : "default"} />
-          <Metric label="Your role" value={`${canCreate ? "Factory admin" : ""}${canCreate && canConfigure ? " · " : ""}${canConfigure ? "Claim admin" : ""}`} icon="admin_panel_settings" />
+          <Metric label="Your role" value={roleLabel} icon="admin_panel_settings" />
         </section>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
@@ -183,6 +221,67 @@ export default function Dashboard() {
             </section>
           </div>
         </div>
+
+        {isOwner && (
+          <section className="mt-6 people-card p-6 sm:p-7">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <p className="people-kicker">Owner controls</p>
+                <h2 className="mt-2 text-xl font-bold text-white">Manage organizer access</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                  Factory admins can create event NFT collections. Claim admins can activate collections, configure claim windows and stop minting. Only the respective contract owner can grant or revoke each permission.
+                </p>
+              </div>
+              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
+                <span className="material-symbols-outlined text-base">verified_user</span> Owner only
+              </span>
+            </div>
+
+            <div className="mt-6">
+              <label className="people-label">Admin wallet address</label>
+              <input
+                className="people-input font-mono"
+                placeholder="0x…"
+                value={adminAddress}
+                onChange={(e) => setAdminAddress(e.target.value)}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-white">Claim controller access</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Configure claim codes and deadlines, activate NFTs and stop minting.</p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${isDappOwner ? "bg-success/10 text-success" : "bg-white/[0.05] text-slate-500"}`}>{isDappOwner ? "You own" : "Not owner"}</span>
+                </div>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <button type="button" disabled={busy || !isDappOwner} onClick={() => updateAdminAccess("dapp", "add")} className="people-button-secondary flex-1">Add claim admin</button>
+                  <button type="button" disabled={busy || !isDappOwner} onClick={() => updateAdminAccess("dapp", "remove")} className="inline-flex flex-1 items-center justify-center rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-white">Factory access</h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">Create new event-specific soulbound NFT collections from the organizer dashboard.</p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${isFactoryOwner ? "bg-success/10 text-success" : "bg-white/[0.05] text-slate-500"}`}>{isFactoryOwner ? "You own" : "Not owner"}</span>
+                </div>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                  <button type="button" disabled={busy || !isFactoryOwner} onClick={() => updateAdminAccess("factory", "add")} className="people-button-secondary flex-1">Add factory admin</button>
+                  <button type="button" disabled={busy || !isFactoryOwner} onClick={() => updateAdminAccess("factory", "remove")} className="inline-flex flex-1 items-center justify-center rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40">Remove</button>
+                </div>
+              </div>
+            </div>
+
+            <p className="mt-4 text-[11px] leading-5 text-slate-500">Grant only the minimum permission needed. Removing factory access does not remove claim-controller access, and vice versa.</p>
+          </section>
+        )}
       </div>
     </main>
   );
