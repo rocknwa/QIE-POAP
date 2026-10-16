@@ -19,6 +19,10 @@ export const poapDappAbi = [
 ] as const;
 
 export const poapFactoryAbi = [
+  { type: "function", name: "owner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+  { type: "function", name: "admins", stateMutability: "view", inputs: [{ name: "", type: "address" }], outputs: [{ type: "bool" }] },
+  { type: "function", name: "addAdmin", stateMutability: "nonpayable", inputs: [{ name: "admin", type: "address" }], outputs: [] },
+  { type: "function", name: "removeAdmin", stateMutability: "nonpayable", inputs: [{ name: "admin", type: "address" }], outputs: [] },
   { type: "function", name: "createEventPOAP", stateMutability: "nonpayable", inputs: [
     { name: "name_", type: "string" }, { name: "symbol_", type: "string" },
     { name: "metadataURI_", type: "string" }, { name: "minter_", type: "address" }

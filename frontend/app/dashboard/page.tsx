@@ -1,11 +1,2 @@
-"use client";
-
-import dynamic from "next/dynamic";
-
-const Dashboard = dynamic(() => import("./Dashboard"), {
-  ssr: false, // Disable SSR for this component
-});
-
-export default function Page() {
-  return <Dashboard />;
-}
+import Dashboard from "./Dashboard";
+export default function DashboardPage() { return <Dashboard />; }

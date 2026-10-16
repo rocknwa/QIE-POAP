@@ -1,193 +1,87 @@
 "use client";
 
-//  Import necessary hooks and utilities
-import { useState, useEffect } from "react";
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from "wagmi";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import { CgSpinner } from "react-icons/cg"; // Ensure react-icons is installed
-import { poapDappAbi, POAP_DAPP_ADDRESS } from "./constants"; // Adjust path as needed
+import Link from "next/link";
 
-const HomeContent = () => {
-  const [code, setCode] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { isConnected } = useAccount();
-  const contractAddress = POAP_DAPP_ADDRESS;
+const steps = [
+  ["01", "Create an event credential", "Organizers deploy an event-specific soulbound NFT with artwork and metadata stored on IPFS."],
+  ["02", "Verify attendance", "Attendees use the event claim code during the configured claim window."],
+  ["03", "Keep proof permanently", "The non-transferable credential stays in the attendee wallet as verifiable proof of participation."],
+];
 
-  const {
-    data: hash,
-    isPending,
-    error: writeError,
-    writeContractAsync, // Use writeContractAsync for explicit hash return
-  } = useWriteContract();
+const features = [
+  ["verified_user", "Verifiable attendance", "Proof lives on-chain and can be checked independently on the Bohr explorer."],
+  ["lock", "Soulbound credentials", "Attendance NFTs are non-transferable, preserving the integrity of participation records."],
+  ["image", "Event-specific identity", "Each event gets its own artwork, name, symbol and IPFS-backed metadata."],
+  ["shield_lock", "Controlled claims", "Hashed claim credentials, explicit deadlines and duplicate-claim protection are enforced by the contract."],
+];
 
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash,
-    confirmations: 1, // Match AirdropForm's confirmation setting
-  });
-
-  // Handle minting
-  const handleMint = async () => {
-    setErrorMessage(null);
-
-    if (!isConnected) {
-      setErrorMessage("Please connect your wallet.");
-      toast.error("Please connect your wallet.", { position: "top-center", autoClose: 5000 });
-      return;
-    }
-
-    if (!contractAddress) {
-      setErrorMessage("Bohr contract address is not configured.");
-      return;
-    }
-
-    if (!code.trim()) {
-      setErrorMessage("Please enter a valid code.");
-      toast.error("Please enter a valid code.", { position: "top-center", autoClose: 5000 });
-      return;
-    }
-
-    try {
-      const txHash = await writeContractAsync({
-        address: contractAddress!,
-        abi: poapDappAbi,
-        functionName: "mint",
-        args: [code],
-      });
-
-      console.log("Mint transaction sent, hash:", txHash);
-      toast.success("Mint transaction sent! Check your wallet.", {
-        position: "top-center",
-        autoClose: 5000,
-      });
-
-      // Wait for confirmation (optional, for UI feedback)
-      if (isConfirmed && hash) {
-        console.log("Mint transaction confirmed, hash:", hash);
-        toast.success("Minting successful!", { position: "top-center", autoClose: 5000 });
-      }
-    } catch (e: unknown) {
-      // Type guard to narrow the error type
-      const error = e as Error;
-      const message = error.message || "Minting failed";
-      console.error("Minting error details:", e); // Detailed error logging
-      if (message.includes("MintingDisabled")) {
-        setErrorMessage("Minting is currently disabled by the contract.");
-        toast.error("Minting is currently disabled.", { position: "top-center", autoClose: 5000 });
-      } else if (message.includes("InvalidCode")) {
-        setErrorMessage("The provided code is invalid.");
-        toast.error("Invalid code.", { position: "top-center", autoClose: 5000 });
-      } else if (message.includes("MintingExpired")) {
-        setErrorMessage("The event claim deadline has passed.");
-        toast.error("Code has expired.", { position: "top-center", autoClose: 5000 });
-      } else if (message.includes("AlreadyMinted")) {
-        setErrorMessage("You have already minted this POAP.");
-        toast.error("Already minted.", { position: "top-center", autoClose: 5000 });
-      } else {
-        setErrorMessage(message);
-        toast.error(message, { position: "top-center", autoClose: 5000 });
-      }
-    }
-  };
-
-  // Update button content based on state
-  const getButtonContent = () => {
-    if (isPending) {
-      return (
-        <div className="flex items-center justify-center gap-2 w-full">
-          <CgSpinner className="animate-spin" size={20} />
-          <span>Confirming in wallet...</span>
-        </div>
-      );
-    }
-    if (isConfirming) {
-      return (
-        <div className="flex items-center justify-center gap-2 w-full">
-          <CgSpinner className="animate-spin" size={20} />
-          <span>Waiting for transaction...</span>
-        </div>
-      );
-    }
-    if (writeError || errorMessage) {
-      return <span>{errorMessage || `Error: ${writeError?.message || "See console"}`}</span>;
-    }
-    return "Claim POAP";
-  };
-
-  // Effect to handle hash display (mimics AirdropForm's UI feedback)
-  useEffect(() => {
-    if (isConfirmed && hash) {
-      console.log("Transaction confirmed in effect, hash:", hash);
-      toast.success("Minting confirmed!", { position: "top-center", autoClose: 5000 });
-    }
-  }, [isConfirmed, hash]);
-
+export default function HomeContent() {
   return (
-    <div id="webcrumbs">
-      <div className="w-full bg-gradient-to-b from-purple-900 to-purple-700 min-h-screen px-4 sm:px-6 lg:px-8">
-        <main className="px-4 sm:px-8 lg:px-12 py-8 sm:py-12 lg:py-16">
-          <div className="text-center mb-12 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 sm:mb-6">Collect Proof of Attendance Tokens</h2>
-            <p className="text-lg sm:text-xl text-purple-200 max-w-2xl mx-auto mb-8">Commemorate your participation in virtual and real-world events with unique, collectible badges on the blockchain</p>
-            <div className="max-w-md mx-auto">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Enter your token or code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  className="w-full px-6 py-3 rounded-full bg-white/10 backdrop-blur-lg border border-purple-400/30 text-white placeholder-purple-200 outline-none focus:ring-2 focus:ring-purple-400 transition-all duration-300"
-                />
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-purple-500 text-white px-4 py-1.5 rounded-full hover:bg-purple-400 transition-colors"
-                  onClick={handleMint}
-                  disabled={isPending || isConfirming}
-                >
-                  {getButtonContent()}
-                </button>
+    <main>
+      <section className="relative overflow-hidden border-b border-white/[0.05]">
+        <div className="pointer-events-none absolute left-1/2 top-[-18rem] h-[38rem] w-[58rem] -translate-x-1/2 rounded-full bg-violet/20 blur-[120px]" />
+        <div className="people-shell relative grid min-h-[680px] items-center gap-14 py-20 lg:grid-cols-[1.05fr_.95fr] lg:py-24">
+          <div>
+            <div className="mb-6 flex flex-wrap items-center gap-2">
+              <span className="people-status"><span className="h-1.5 w-1.5 rounded-full bg-success" /> Live on Bohr Testnet</span>
+              <span className="people-status">Soulbound ERC-721</span>
+            </div>
+            <p className="people-kicker mb-4">Proof of participation</p>
+            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl lg:text-6xl">Proof of attendance, <span className="text-primary">made verifiable.</span></h1>
+            <p className="mt-6 max-w-2xl text-base leading-8 text-slate-400 sm:text-lg">PEOPLE lets event organizers issue non-transferable attendance credentials while attendees claim proof of participation directly to their wallets.</p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href="/claim" className="people-button-primary">Claim attendance <span className="material-symbols-outlined text-lg">arrow_forward</span></Link>
+              <Link href="/events" className="people-button-secondary">View My POAPs</Link>
+            </div>
+            <div className="mt-9 flex flex-wrap gap-x-8 gap-y-3 text-xs text-slate-500">
+              <span className="flex items-center gap-2"><span className="material-symbols-outlined text-base text-success">check_circle</span> Event-specific NFTs</span>
+              <span className="flex items-center gap-2"><span className="material-symbols-outlined text-base text-success">check_circle</span> IPFS metadata</span>
+              <span className="flex items-center gap-2"><span className="material-symbols-outlined text-base text-success">check_circle</span> On-chain claim rules</span>
+            </div>
+          </div>
+
+          <div className="relative mx-auto w-full max-w-lg">
+            <div className="absolute -inset-10 rounded-full bg-violet/10 blur-3xl" />
+            <div className="people-card-elevated relative overflow-hidden p-5 sm:p-6">
+              <div className="mb-5 flex items-center justify-between">
+                <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-500">Credential preview</p><p className="mt-1 font-bold text-white">PEOPLE Attendance</p></div>
+                <span className="rounded-full border border-success/20 bg-success/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-success">Verified</span>
+              </div>
+              <div className="relative aspect-square overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_35%,rgba(124,58,237,.52),rgba(17,24,39,.98)_62%)]">
+                <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px)] [background-size:32px_32px]" />
+                <div className="absolute inset-0 grid place-items-center">
+                  <div className="grid h-40 w-40 place-items-center rounded-[2rem] border border-primary/35 bg-black/30 shadow-[0_0_70px_rgba(124,58,237,.45)] backdrop-blur">
+                    <span className="material-symbols-outlined text-[86px] text-primary">token</span>
+                  </div>
+                </div>
+                <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between">
+                  <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">Soulbound credential</p><p className="mt-1 text-lg font-bold text-white">Proof that you were there.</p></div>
+                  <span className="rounded-lg bg-black/40 px-2.5 py-1.5 text-xs font-bold text-primary backdrop-blur">#968</span>
+                </div>
+              </div>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {[['Network','Bohr'],['Token','BOT'],['Standard','ERC-721']].map(([k,v]) => <div key={k} className="rounded-xl bg-white/[0.035] p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{k}</p><p className="mt-1 text-xs font-bold text-slate-200">{v}</p></div>)}
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 transform hover:scale-105 transition-transform duration-300">
-              <span className="material-symbols-outlined text-3xl sm:text-4xl text-white mb-4">event_available</span>
-              <h3 className="text-lg sm:text-xl font-bold text-white mb-2">Discover Events</h3>
-              <p className="text-purple-200">Find upcoming events and collect unique POAPs from your favorite communities</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 transform hover:scale-105 transition-transform duration-300">
-              <span className="material-symbols-outlined text-3xl sm:text-4xl text-white mb-4">collections_bookmark</span>
-              <h3 className="text-lg sm:text-xl font-bold text-white mb-2">Build Collection</h3>
-              <p className="text-purple-200">Create your digital memory box with POAPs from events you&apos;ve attended</p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 transform hover:scale-105 transition-transform duration-300">
-              <span className="material-symbols-outlined text-3xl sm:text-4xl text-white mb-4">groups</span>
-              <h3 className="text-lg sm:text-xl font-bold text-white mb-2">Join Community</h3>
-              <p className="text-purple-200">Connect with others who share your interests and experiences</p>
-            </div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-lg rounded-3xl p-4 sm:p-6 lg:p-8">
-            <h3 className="text-xl sm:text-2xl font-bold text-white mb-4 sm:mb-6">Featured POAPs</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl p-4 transform hover:scale-105 transition-transform duration-300 cursor-pointer">
-                  <div className="w-full aspect-square sm:h-40 lg:h-48 bg-purple-400/20 rounded-lg mb-4" />
-                  <h4 className="text-base sm:text-lg font-semibold text-white mb-2">Event #{i}</h4>
-                  <p className="text-purple-200 text-sm">Date: 2023-{i}-01</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </main>
-        {isConfirmed && hash && (
-          <div className="fixed bottom-4 right-4 bg-white/10 backdrop-blur-lg rounded-lg p-4 shadow-lg">
-            <h4 className="text-white font-semibold">Transaction Confirmed</h4>
-            <p className="text-purple-200 break-all">Hash: {hash}</p>
-          </div>
-        )}
-        <ToastContainer />
-      </div>
-    </div>
-  );
-};
+        </div>
+      </section>
 
-export default HomeContent;
+      <section className="people-shell py-20">
+        <div className="max-w-2xl"><p className="people-kicker">How it works</p><h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Simple enough for attendees. Verifiable enough for organizers.</h2></div>
+        <div className="mt-10 grid gap-4 lg:grid-cols-3">{steps.map(([n,t,d]) => <article key={n} className="people-card p-6"><p className="text-sm font-extrabold text-primary">{n}</p><h3 className="mt-6 text-xl font-bold text-white">{t}</h3><p className="mt-3 text-sm leading-6 text-slate-400">{d}</p></article>)}</div>
+      </section>
+
+      <section className="border-y border-white/[0.05] bg-white/[0.015]">
+        <div className="people-shell py-20"><div className="text-center"><p className="people-kicker">Why PEOPLE</p><h2 className="mt-3 text-3xl font-bold tracking-tight text-white">Event credentials without Web3 clutter.</h2></div><div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{features.map(([icon,t,d]) => <article key={t} className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet/10 text-primary"><span className="material-symbols-outlined text-xl">{icon}</span></span><h3 className="mt-5 font-bold text-white">{t}</h3><p className="mt-2 text-sm leading-6 text-slate-400">{d}</p></article>)}</div></div>
+      </section>
+
+      <section className="people-shell py-20">
+        <div className="people-card-elevated flex flex-col items-start justify-between gap-6 overflow-hidden p-7 sm:p-10 lg:flex-row lg:items-center">
+          <div><p className="people-kicker">For organizers</p><h2 className="mt-3 text-2xl font-bold text-white sm:text-3xl">Create an attendance credential for your event.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Upload artwork, create the soulbound NFT, set the claim window and let attendees mint proof of participation.</p></div>
+          <Link href="/dashboard" className="people-button-primary whitespace-nowrap">Open Organizer Dashboard</Link>
+        </div>
+      </section>
+    </main>
+  );
+}

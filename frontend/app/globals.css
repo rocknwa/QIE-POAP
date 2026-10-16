@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @import '@material-symbols/font-400';
 
 @tailwind base;
@@ -5,19 +6,54 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #0b0f19;
+  --surface: #0f131d;
+  --surface-low: #171b26;
+  --surface-card: #1c1f2a;
+  --surface-high: #262a35;
+  --border: rgba(255,255,255,.08);
+  --text: #dfe2f1;
+  --muted: #9ca3af;
+  --violet: #7c3aed;
+  --violet-light: #d2bbff;
+  --success: #4edea3;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+* { box-sizing: border-box; }
+html { background: var(--background); scroll-behavior: smooth; }
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 50% -15%, rgba(124,58,237,.16), transparent 32rem),
+    var(--background);
+}
+button, input, textarea { font: inherit; }
+a { color: inherit; text-decoration: none; }
+::selection { background: rgba(124,58,237,.7); color: white; }
+
+@layer components {
+  .people-shell {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .people-card {
+    @apply rounded-2xl border border-white/10 backdrop-blur-xl;
+    background-color: rgba(17, 24, 39, 0.8);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  }
+
+  .people-card-elevated {
+    @apply rounded-2xl border border-white/10 backdrop-blur-xl;
+    background-color: rgba(24, 24, 35, 0.9);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.32),
+      0 0 40px rgba(124, 58, 237, 0.12);
+  }
+
+  .people-input {
+    @apply w-full rounded-xl border border-white/10 bg-[#0a0e18] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-violet-500/70 focus:ring-2 focus:ring-violet-500/20;
+  }
 }
