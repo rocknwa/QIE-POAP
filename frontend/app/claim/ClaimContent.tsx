@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { zeroAddress } from "viem";
+import { keccak256, toBytes, zeroAddress, zeroHash } from "viem";
 import { POAP_DAPP_ADDRESS, poapDappAbi } from "../constants";
 
 function friendlyError(message: string) {
@@ -27,6 +27,7 @@ export default function ClaimContent() {
 
   const { data: activeNft } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
   const { data: deadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: currentCodeHash, isLoading: codeHashLoading } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "codeHash", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
   const { data: claimed, refetch: refetchClaimed } = useReadContract({
     address: POAP_DAPP_ADDRESS!,
     abi: poapDappAbi,
@@ -51,9 +52,27 @@ export default function ClaimContent() {
     setUiError("");
     if (!isConnected) return setUiError("Connect the wallet that should receive the attendance credential.");
     if (!POAP_DAPP_ADDRESS) return setUiError("The Bohr claim contract is not configured.");
+    if (!eventActive) return setUiError("There is no active event to claim right now.");
+    if (expired) return setUiError("The claim period for this event has ended.");
+    if (claimed) return setUiError("This wallet already claimed the attendance credential.");
     if (!code.trim()) return setUiError("Enter the event claim code.");
+    if (codeHashLoading || !currentCodeHash) return setUiError("Claim settings are still loading. Try again in a moment.");
+    if (currentCodeHash === zeroHash) return setUiError("This event does not have a claim code configured yet.");
+
+    // UX preflight only: the contract still performs the authoritative check.
+    // This avoids opening the wallet for an obviously wrong code.
+    const submittedCodeHash = keccak256(toBytes(code.trim()));
+    if (submittedCodeHash.toLowerCase() !== String(currentCodeHash).toLowerCase()) {
+      return setUiError("That event code is not valid. Check the code and try again.");
+    }
+
     try {
-      await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "mint", args: [code.trim()] });
+      await writeContractAsync({
+        address: POAP_DAPP_ADDRESS,
+        abi: poapDappAbi,
+        functionName: "mint",
+        args: [code.trim()],
+      });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       setUiError(friendlyError(msg));
@@ -95,7 +114,7 @@ export default function ClaimContent() {
           {uiError && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">{uiError}</div>}
           {isSuccess && <div className="mt-4 rounded-xl border border-success/20 bg-success/10 p-4"><p className="font-bold text-success">Attendance verified</p><p className="mt-1 text-sm text-slate-300">Your PEOPLE POAP has been minted to your wallet.</p></div>}
 
-          <button type="button" onClick={claim} disabled={isPending || confirming || !eventActive || expired || Boolean(claimed)} className="people-button-primary mt-6 w-full py-3.5">{isPending ? "Confirm in wallet…" : confirming ? "Confirming on Bohr…" : claimed ? "Already claimed" : "Claim POAP"}<span className="material-symbols-outlined text-lg">verified</span></button>
+          <button type="button" onClick={claim} disabled={isPending || confirming || codeHashLoading || !eventActive || expired || Boolean(claimed)} className="people-button-primary mt-6 w-full py-3.5">{isPending ? "Confirm in wallet…" : confirming ? "Confirming on Bohr…" : claimed ? "Already claimed" : "Claim POAP"}<span className="material-symbols-outlined text-lg">verified</span></button>
           {isSuccess && <Link href="/events" className="people-button-secondary mt-3 w-full">View My POAPs</Link>}
           <p className="mt-4 text-center text-xs leading-5 text-slate-500">The claim transaction is public. Do not reuse a sensitive password as an event code.</p>
         </section>

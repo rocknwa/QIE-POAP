@@ -38,6 +38,7 @@ export default function Events() {
   const [collectionCount, setCollectionCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedPoap, setSelectedPoap] = useState(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -172,22 +173,148 @@ export default function Events() {
         {mounted && !loading && isConnected && !error && poaps.length === 0 && <StateCard icon="wallet" title="No attendance NFTs yet" body="Claim a PEOPLE POAP at a participating event and it will appear here permanently." action={<Link href="/claim" className="people-button-primary">Claim a POAP</Link>} />}
 
         {mounted && !loading && poaps.length > 0 && (
-          <div className="mt-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {poaps.map((poap) => (
-              <article key={`${poap.collection}-${poap.tokenId.toString()}`} className="group overflow-hidden rounded-2xl border border-white/[0.08] bg-surface-low shadow-panel transition hover:-translate-y-1 hover:border-violet-500/35">
-                <div className="relative aspect-square overflow-hidden bg-surface-card">
-                  {poap.imageURL ? <img src={poap.imageURL} alt={poap.metadata?.name ? `${poap.metadata.name} artwork` : "POAP artwork"} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.02]"/> : <div className="grid h-full place-items-center p-8 text-center text-sm text-slate-500">{poap.metadataError ? "Artwork could not be resolved from the IPFS gateway." : "No artwork found in the event metadata."}</div>}
-                  <div className="absolute right-4 top-4 rounded-full border border-white/10 bg-black/55 px-3 py-1 text-xs font-bold text-white backdrop-blur">#{poap.tokenId.toString()}</div>
-                  <div className="absolute bottom-4 left-4 rounded-full border border-violet-500/30 bg-violet-500/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-200 backdrop-blur">Soulbound</div>
-                </div>
-                <div className="p-5">
-                  <h2 className="text-lg font-bold text-white">{poap.metadata?.name || poap.name}</h2>
-                  {poap.metadata?.description && <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-400">{poap.metadata.description}</p>}
-                  {poap.metadataError && <p className="mt-3 rounded-lg border border-amber-400/20 bg-amber-500/10 p-3 text-xs text-amber-200">Metadata gateway error: {poap.metadataError}</p>}
-                  <a href={`${EXPLORER}/token/${poap.collection}/instance/${poap.tokenId.toString()}`} target="_blank" rel="noreferrer" className="people-button-secondary mt-5 w-full">View NFT on Bohr Explorer <span className="material-symbols-outlined text-base">open_in_new</span></a>
-                </div>
+              <article
+                key={`${poap.collection}-${poap.tokenId.toString()}`}
+                className="group overflow-hidden rounded-2xl border border-white/[0.08] bg-surface-low transition hover:-translate-y-0.5 hover:border-violet-500/35"
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoap(poap)}
+                  className="block w-full text-left"
+                  aria-label={`View details for ${poap.metadata?.name || poap.name}`}
+                >
+                  <div className="relative h-44 overflow-hidden bg-surface-card sm:h-48">
+                    {poap.imageURL ? (
+                      <img
+                        src={poap.imageURL}
+                        alt={poap.metadata?.name ? `${poap.metadata.name} artwork` : "POAP artwork"}
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.025]"
+                      />
+                    ) : (
+                      <div className="grid h-full place-items-center p-6 text-center text-xs text-slate-500">
+                        {poap.metadataError ? "Artwork unavailable" : "No artwork found"}
+                      </div>
+                    )}
+                    <div className="absolute right-3 top-3 rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">
+                      #{poap.tokenId.toString()}
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <h2 className="truncate text-base font-bold text-white">
+                      {poap.metadata?.name || poap.name}
+                    </h2>
+                    {poap.metadata?.description && (
+                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">
+                        {poap.metadata.description}
+                      </p>
+                    )}
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-200">
+                        Soulbound
+                      </span>
+                      <span className="text-xs font-semibold text-violet-300">View details →</span>
+                    </div>
+                  </div>
+                </button>
               </article>
             ))}
+          </div>
+        )}
+
+        {selectedPoap && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="POAP details"
+            onClick={() => setSelectedPoap(null)}
+          >
+            <div
+              className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-[#0c111d] shadow-2xl sm:max-w-3xl sm:rounded-3xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4 sm:px-6">
+                <div>
+                  <p className="people-kicker">Attendance credential</p>
+                  <h2 className="mt-1 text-lg font-bold text-white">
+                    {selectedPoap.metadata?.name || selectedPoap.name}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoap(null)}
+                  className="grid h-10 w-10 place-items-center rounded-full border border-white/10 text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                  aria-label="Close POAP details"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div className="grid gap-0 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                <div className="bg-black/20 p-4 sm:p-6">
+                  <div className="mx-auto overflow-hidden rounded-2xl border border-white/[0.08] bg-surface-card">
+                    {selectedPoap.imageURL ? (
+                      <img
+                        src={selectedPoap.imageURL}
+                        alt={selectedPoap.metadata?.name ? `${selectedPoap.metadata.name} artwork` : "POAP artwork"}
+                        className="max-h-[460px] w-full object-contain"
+                      />
+                    ) : (
+                      <div className="grid aspect-square place-items-center p-8 text-center text-sm text-slate-500">
+                        Artwork unavailable
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-5 sm:p-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-violet-500/25 bg-violet-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-200">
+                      Soulbound
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-slate-300">
+                      Token #{selectedPoap.tokenId.toString()}
+                    </span>
+                  </div>
+
+                  {selectedPoap.metadata?.description && (
+                    <p className="mt-5 text-sm leading-7 text-slate-300">
+                      {selectedPoap.metadata.description}
+                    </p>
+                  )}
+
+                  <div className="mt-6 space-y-3 rounded-2xl border border-white/[0.07] bg-black/20 p-4 text-sm">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Collection</p>
+                      <p className="mt-1 break-all font-mono text-xs text-slate-300">{selectedPoap.collection}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Network</p>
+                      <p className="mt-1 font-semibold text-white">Bohr Testnet · 968</p>
+                    </div>
+                  </div>
+
+                  {selectedPoap.metadataError && (
+                    <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-xs text-amber-200">
+                      Metadata gateway error: {selectedPoap.metadataError}
+                    </p>
+                  )}
+
+                  <a
+                    href={`${EXPLORER}/token/${selectedPoap.collection}/instance/${selectedPoap.tokenId.toString()}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="people-button-primary mt-6 w-full"
+                  >
+                    View NFT on Bohr Explorer
+                    <span className="material-symbols-outlined text-base">open_in_new</span>
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
