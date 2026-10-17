@@ -101,12 +101,19 @@ export default function Dashboard() {
     setBusy(true);
     try {
       const isActivatingNewEvent = Boolean(createdNft);
-      const hash = await writeContractAsync({
-        address: POAP_DAPP_ADDRESS,
-        abi: poapDappAbi,
-        functionName: isActivatingNewEvent ? "activateEvent" : "configureClaim",
-        args: isActivatingNewEvent ? [createdNft, hashOfCode, unixDeadline] : [hashOfCode, unixDeadline],
-      } as any);
+      const hash = isActivatingNewEvent
+        ? await writeContractAsync({
+            address: POAP_DAPP_ADDRESS,
+            abi: poapDappAbi,
+            functionName: "activateEvent",
+            args: [createdNft as `0x${string}`, hashOfCode, unixDeadline],
+          })
+        : await writeContractAsync({
+            address: POAP_DAPP_ADDRESS,
+            abi: poapDappAbi,
+            functionName: "configureClaim",
+            args: [hashOfCode, unixDeadline],
+          });
       await publicClient.waitForTransactionReceipt({ hash });
       await Promise.all([refetchNft(), refetchDeadline(), refetchCodeHash()]);
       setClaimCode("");
@@ -141,18 +148,50 @@ export default function Dashboard() {
     const isScopeOwner = scope === "dapp" ? isDappOwner : isFactoryOwner;
     if (!isScopeOwner) return toast.error(`Only the ${scope === "dapp" ? "controller" : "factory"} owner can manage this access.`);
 
-    const contractAddress = scope === "dapp" ? POAP_DAPP_ADDRESS : POAP_FACTORY_ADDRESS;
-    const abi = scope === "dapp" ? poapDappAbi : poapFactoryAbi;
-    if (!contractAddress) return toast.error("Contract address is not configured.");
-
     setBusy(true);
     try {
-      const hash = await writeContractAsync({
-        address: contractAddress,
-        abi,
-        functionName: action === "add" ? "addAdmin" : "removeAdmin",
-        args: [target],
-      } as any);
+      let hash: `0x${string}`;
+
+      if (scope === "dapp") {
+        if (!POAP_DAPP_ADDRESS) {
+          return toast.error("Claim controller address is not configured.");
+        }
+
+        hash =
+          action === "add"
+            ? await writeContractAsync({
+                address: POAP_DAPP_ADDRESS,
+                abi: poapDappAbi,
+                functionName: "addAdmin",
+                args: [target],
+              })
+            : await writeContractAsync({
+                address: POAP_DAPP_ADDRESS,
+                abi: poapDappAbi,
+                functionName: "removeAdmin",
+                args: [target],
+              });
+      } else {
+        if (!POAP_FACTORY_ADDRESS) {
+          return toast.error("Factory address is not configured.");
+        }
+
+        hash =
+          action === "add"
+            ? await writeContractAsync({
+                address: POAP_FACTORY_ADDRESS,
+                abi: poapFactoryAbi,
+                functionName: "addAdmin",
+                args: [target],
+              })
+            : await writeContractAsync({
+                address: POAP_FACTORY_ADDRESS,
+                abi: poapFactoryAbi,
+                functionName: "removeAdmin",
+                args: [target],
+              });
+      }
+
       await publicClient.waitForTransactionReceipt({ hash });
       toast.success(`${scope === "dapp" ? "Claim" : "Factory"} admin ${action === "add" ? "added" : "removed"}.`);
     } catch (error) {
