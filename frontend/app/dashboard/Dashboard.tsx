@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
-import { isAddress, keccak256, parseEventLogs, toBytes, zeroAddress } from "viem";
+import { isAddress, keccak256, parseEventLogs, toBytes, zeroAddress, zeroHash } from "viem";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { poapDappAbi, poapFactoryAbi, POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS } from "../constants";
@@ -44,6 +44,7 @@ export default function Dashboard() {
   const { data: factoryAdmin } = useReadContract({ address: POAP_FACTORY_ADDRESS!, abi: poapFactoryAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled: factoryEnabled } });
   const { data: currentNft, refetch: refetchNft } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
   const { data: currentDeadline, refetch: refetchDeadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: currentCodeHash, refetch: refetchCodeHash } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "codeHash", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
 
   const isDappOwner = Boolean(address && owner?.toLowerCase() === address.toLowerCase());
   const isFactoryOwner = Boolean(address && factoryOwner?.toLowerCase() === address.toLowerCase());
@@ -57,6 +58,7 @@ export default function Dashboard() {
     ? "Owner"
     : `${isFactoryAdmin ? "Factory Admin" : ""}${isFactoryAdmin && isDappAdmin ? " · " : ""}${isDappAdmin ? "Claim Admin" : ""}` || "Organizer";
   const activeConfigured = Boolean(currentNft && currentNft !== zeroAddress);
+  const claimCodeConfigured = Boolean(currentCodeHash && currentCodeHash !== zeroHash);
   const deadlineText = useMemo(() => currentDeadline && currentDeadline > BigInt(0) ? new Date(Number(currentDeadline) * 1000).toLocaleString() : "Not configured", [currentDeadline]);
   const deadlineExpired = Boolean(currentDeadline && currentDeadline > BigInt(0) && Number(currentDeadline) * 1000 <= Date.now());
 
@@ -111,9 +113,9 @@ export default function Dashboard() {
     try {
       const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "configureClaim", args: [hashOfCode, unixDeadline] });
       await publicClient.waitForTransactionReceipt({ hash });
-      await refetchDeadline();
+      await Promise.all([refetchDeadline(), refetchCodeHash()]);
       setClaimCode("");
-      toast.success("Claim code hash and deadline configured. Keep the plaintext event code securely.");
+      toast.success(claimCodeConfigured ? "Claim code and deadline updated for the active event." : "Claim code and deadline configured for the active event.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Claim configuration failed"); }
     finally { setBusy(false); }
   }
@@ -207,16 +209,38 @@ export default function Dashboard() {
 
           <div className="space-y-6">
             <form onSubmit={configureClaim} className="people-card p-6">
-              <div><p className="people-kicker">Step 2</p><h2 className="mt-2 text-xl font-bold text-white">Configure claim window</h2><p className="mt-2 text-sm leading-6 text-slate-400">Only the Keccak-256 hash is stored as contract state. Keep the plaintext event code separately.</p></div>
-              <div className="mt-5"><label className="people-label">Event claim code</label><div className="relative"><span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500">key</span><input className="people-input pl-11" type="password" autoComplete="new-password" placeholder="Enter event claim code" value={claimCode} onChange={e=>setClaimCode(e.target.value)} /></div></div>
-              <div className="mt-4"><label className="people-label">Claim deadline</label><input className="people-input" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)} /></div>
-              <button disabled={busy || !canConfigure} className="people-button-primary mt-5 w-full">Configure claim</button>
-              <p className="mt-3 text-[11px] leading-5 text-slate-500">Submitted claim codes are visible in transaction calldata. Do not use passwords or other sensitive secrets.</p>
+              <div>
+                <p className="people-kicker">Step 2</p>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-xl font-bold text-white">{claimCodeConfigured ? "Update claim settings" : "Configure claim settings"}</h2>
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${claimCodeConfigured ? "bg-success/10 text-success" : "bg-white/[0.05] text-slate-500"}`}>
+                    Claim code: {claimCodeConfigured ? "Configured" : "Not configured"}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-400">Only the Keccak-256 hash is stored as contract state. The plaintext code cannot be recovered from the dashboard or contract after you submit it.</p>
+              </div>
+
+              {claimCodeConfigured && (
+                <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/[0.07] p-4">
+                  <div className="flex gap-3">
+                    <span className="material-symbols-outlined text-xl text-primary">info</span>
+                    <div>
+                      <p className="text-sm font-semibold text-white">The existing code is intentionally hidden.</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-400">Enter a new code below to replace it. Updating these settings changes the code and deadline used by the currently active attendance NFT. Already minted NFTs are unaffected, and previous claim records are not reset.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5"><label className="people-label">{claimCodeConfigured ? "New event claim code" : "Event claim code"}</label><div className="relative"><span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500">key</span><input className="people-input pl-11" type="password" autoComplete="new-password" placeholder={claimCodeConfigured ? "Enter a replacement claim code" : "Enter event claim code"} value={claimCode} onChange={e=>setClaimCode(e.target.value)} /></div></div>
+              <div className="mt-4"><label className="people-label">{claimCodeConfigured ? "New claim deadline" : "Claim deadline"}</label><input className="people-input" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)} /></div>
+              <button disabled={busy || !canConfigure} className="people-button-primary mt-5 w-full">{claimCodeConfigured ? "Update claim settings" : "Configure claim settings"}</button>
+              <p className="mt-3 text-[11px] leading-5 text-slate-500">A claimant submits the plaintext code in the mint transaction, so the code can become visible in transaction calldata after a claim. Do not use passwords or other sensitive secrets as event codes.</p>
             </form>
 
             <section className="people-card p-6">
               <div className="flex items-start justify-between gap-3"><div><p className="people-kicker">Event status</p><h2 className="mt-2 text-lg font-bold text-white">Current controller state</h2></div><span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${activeConfigured ? "bg-success/10 text-success" : "bg-white/[0.05] text-slate-500"}`}>{activeConfigured ? "Minting configured" : "No active NFT"}</span></div>
-              <dl className="mt-5 space-y-4 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">Active collection</dt><dd className="font-mono text-xs text-slate-300">{activeConfigured ? shortAddress(String(currentNft)) : "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Deadline</dt><dd className="text-right text-slate-300">{deadlineText}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Controller access</dt><dd className="text-success">{canConfigure ? "Authorized" : "No access"}</dd></div></dl>
+              <dl className="mt-5 space-y-4 text-sm"><div className="flex justify-between gap-4"><dt className="text-slate-500">Active collection</dt><dd className="font-mono text-xs text-slate-300">{activeConfigured ? shortAddress(String(currentNft)) : "—"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Claim code</dt><dd className={claimCodeConfigured ? "text-success" : "text-slate-500"}>{claimCodeConfigured ? "Configured · plaintext not recoverable" : "Not configured"}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Deadline</dt><dd className="text-right text-slate-300">{deadlineText}</dd></div><div className="flex justify-between gap-4"><dt className="text-slate-500">Controller access</dt><dd className="text-success">{canConfigure ? "Authorized" : "No access"}</dd></div></dl>
               {activeConfigured && <button type="button" onClick={stopMinting} disabled={busy || !canConfigure} className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/20 bg-red-500/[0.07] px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/10 disabled:opacity-50"><span className="material-symbols-outlined text-lg">stop_circle</span> Stop minting</button>}
             </section>
           </div>
