@@ -90,18 +90,6 @@ export default function Dashboard() {
     } finally { setBusy(false); }
   }
 
-  async function activateNft() {
-    if (!canConfigure || !POAP_DAPP_ADDRESS || !createdNft || !publicClient) return toast.error("Create an NFT and use an authorized controller admin wallet.");
-    setBusy(true);
-    try {
-      const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "updateNFTContract", args: [createdNft] });
-      await publicClient.waitForTransactionReceipt({ hash });
-      await refetchNft();
-      toast.success("Event credential activated for claims.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Activation failed"); }
-    finally { setBusy(false); }
-  }
-
   async function configureClaim(e: FormEvent) {
     e.preventDefault();
     if (!canConfigure || !POAP_DAPP_ADDRESS || !publicClient || !claimCode.trim() || !deadline) return toast.error("Enter a claim code and future deadline using an authorized admin wallet.");
@@ -111,11 +99,22 @@ export default function Dashboard() {
 
     setBusy(true);
     try {
-      const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "configureClaim", args: [hashOfCode, unixDeadline] });
+      const isActivatingNewEvent = Boolean(createdNft);
+      const hash = await writeContractAsync({
+        address: POAP_DAPP_ADDRESS,
+        abi: poapDappAbi,
+        functionName: isActivatingNewEvent ? "activateEvent" : "configureClaim",
+        args: isActivatingNewEvent ? [createdNft, hashOfCode, unixDeadline] : [hashOfCode, unixDeadline],
+      } as any);
       await publicClient.waitForTransactionReceipt({ hash });
-      await Promise.all([refetchDeadline(), refetchCodeHash()]);
+      await Promise.all([refetchNft(), refetchDeadline(), refetchCodeHash()]);
       setClaimCode("");
-      toast.success(claimCodeConfigured ? "Claim code and deadline updated for the active event." : "Claim code and deadline configured for the active event.");
+      if (isActivatingNewEvent) {
+        setCreatedNft("");
+        toast.success("New event activated. It immediately replaced the previous active event.");
+      } else {
+        toast.success(claimCodeConfigured ? "Claim code and deadline updated for the active event." : "Claim code and deadline configured for the active event.");
+      }
     } catch (error) { toast.error(error instanceof Error ? error.message : "Claim configuration failed"); }
     finally { setBusy(false); }
   }
@@ -127,7 +126,7 @@ export default function Dashboard() {
     try {
       const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "stopMinting" });
       await publicClient.waitForTransactionReceipt({ hash });
-      await refetchNft();
+      await Promise.all([refetchNft(), refetchDeadline(), refetchCodeHash()]);
       toast.success("Minting stopped.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to stop minting"); }
     finally { setBusy(false); }
@@ -204,7 +203,7 @@ export default function Dashboard() {
 
             <div className="mt-6 flex flex-wrap items-center gap-3"><button disabled={busy || !canCreate} className="people-button-primary">{busy ? "Working…" : "Upload metadata & create NFT"}<span className="material-symbols-outlined text-lg">arrow_forward</span></button>{!canCreate && <span className="text-xs text-amber-300">This wallet cannot create factory collections.</span>}</div>
 
-            {createdNft && <div className="mt-5 rounded-2xl border border-success/20 bg-success/10 p-4"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-sm font-bold text-success">Credential created</p><p className="mt-1 break-all text-xs text-slate-300">{createdNft}</p></div><button type="button" onClick={activateNft} disabled={busy || !canConfigure} className="people-button-secondary">Activate for claims</button></div></div>}
+            {createdNft && <div className="mt-5 rounded-2xl border border-success/20 bg-success/10 p-4"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-sm font-bold text-success">Credential created · ready to activate</p><p className="mt-1 break-all text-xs text-slate-300">{createdNft}</p><p className="mt-2 text-xs leading-5 text-slate-400">Set its claim code and deadline in Step 2. Activation is atomic, so this collection and its claim settings replace the old active event in one transaction.</p></div><span className="people-status self-start sm:self-auto">Pending activation</span></div></div>}
           </form>
 
           <div className="space-y-6">
@@ -212,15 +211,15 @@ export default function Dashboard() {
               <div>
                 <p className="people-kicker">Step 2</p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-xl font-bold text-white">{claimCodeConfigured ? "Update claim settings" : "Configure claim settings"}</h2>
+                  <h2 className="text-xl font-bold text-white">{createdNft ? "Activate new event" : claimCodeConfigured ? "Update claim settings" : "Configure claim settings"}</h2>
                   <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${claimCodeConfigured ? "bg-success/10 text-success" : "bg-white/[0.05] text-slate-500"}`}>
-                    Claim code: {claimCodeConfigured ? "Configured" : "Not configured"}
+                    Claim code: {createdNft ? "New event" : claimCodeConfigured ? "Configured" : "Not configured"}
                   </span>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-slate-400">Only the Keccak-256 hash is stored as contract state. The plaintext code cannot be recovered from the dashboard or contract after you submit it.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-400">Only the Keccak-256 hash is stored as contract state. The plaintext code cannot be recovered after submission. A newly created collection is activated together with its code and deadline in one transaction.</p>
               </div>
 
-              {claimCodeConfigured && (
+              {claimCodeConfigured && !createdNft && (
                 <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/[0.07] p-4">
                   <div className="flex gap-3">
                     <span className="material-symbols-outlined text-xl text-primary">info</span>
@@ -232,10 +231,11 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div className="mt-5"><label className="people-label">{claimCodeConfigured ? "New event claim code" : "Event claim code"}</label><div className="relative"><span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500">key</span><input className="people-input pl-11" type="password" autoComplete="new-password" placeholder={claimCodeConfigured ? "Enter a replacement claim code" : "Enter event claim code"} value={claimCode} onChange={e=>setClaimCode(e.target.value)} /></div></div>
-              <div className="mt-4"><label className="people-label">{claimCodeConfigured ? "New claim deadline" : "Claim deadline"}</label><input className="people-input" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)} /></div>
-              <button disabled={busy || !canConfigure} className="people-button-primary mt-5 w-full">{claimCodeConfigured ? "Update claim settings" : "Configure claim settings"}</button>
+              <div className="mt-5"><label className="people-label">{createdNft ? "Claim code for new event" : claimCodeConfigured ? "New event claim code" : "Event claim code"}</label><div className="relative"><span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500">key</span><input className="people-input pl-11" type="password" autoComplete="new-password" placeholder={createdNft ? "Enter the new event claim code" : claimCodeConfigured ? "Enter a replacement claim code" : "Enter event claim code"} value={claimCode} onChange={e=>setClaimCode(e.target.value)} /></div></div>
+              <div className="mt-4"><label className="people-label">{createdNft ? "Claim deadline for new event" : claimCodeConfigured ? "New claim deadline" : "Claim deadline"}</label><input className="people-input" type="datetime-local" value={deadline} onChange={e=>setDeadline(e.target.value)} /></div>
+              <button disabled={busy || !canConfigure} className="people-button-primary mt-5 w-full">{createdNft ? "Activate new event" : claimCodeConfigured ? "Update claim settings" : "Configure claim settings"}</button>
               <p className="mt-3 text-[11px] leading-5 text-slate-500">A claimant submits the plaintext code in the mint transaction, so the code can become visible in transaction calldata after a claim. Do not use passwords or other sensitive secrets as event codes.</p>
+              {createdNft && <p className="mt-2 text-[11px] leading-5 text-primary">Activating this event replaces the currently active NFT immediately. Previous POAPs remain in attendee wallets and in My POAPs history.</p>}
             </form>
 
             <section className="people-card p-6">

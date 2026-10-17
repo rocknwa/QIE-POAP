@@ -1,188 +1,95 @@
-# POAP Smart Contract
+# PEOPLE Smart Contracts
 
-This project implements a **Proof of Attendance Protocol (POAP)** system on Ethereum using Solidity smart contracts. It consists of two main contracts: `POAPDapp` and `POAPNFT`. The `POAPDapp` contract manages the issuance of soulbound NFTs, ensuring that only users with a valid, time-limited code can mint an NFT. The `POAPNFT` contract is an ERC721 token contract with soulbound properties, preventing token transfers after minting.
+The current PEOPLE Bohr pilot uses three Solidity contracts:
 
-## Features
+- `POAPDapp` — single-event claim controller.
+- `POAPFactory` — owner/admin-restricted factory for event NFT collections.
+- `EventPOAP` — event-specific soulbound ERC-721 attendance NFT.
 
-- **Admin-Controlled Minting**: Admins can update a valid code and NFT contract address, and stop minting when necessary.
-- **Code-Based Access**: Users must provide a valid code to mint an NFT, with a 24-hour expiration period for each code.
-- **Single Minting**: Each user can mint only one NFT to prevent duplicates.
-- **Soulbound NFTs**: NFTs are non-transferable, ensuring they remain with the original recipient.
-- **Comprehensive Testing**: Includes a full test suite covering deployment, admin management, code updates, minting, and soulbound restrictions.
+The historical QIE deployment remains unchanged.
 
-## Prerequisites
+## Security model
 
-To run this project, ensure you have the following installed:
+### Claim controller
 
-- [Node.js](https://nodejs.org/) (v18 or higher)
-- [Hardhat](https://hardhat.org/) (for development and testing)
-- [OpenZeppelin Contracts](https://www.openzeppelin.com/contracts) (for ERC721 and Ownable implementations)
-- [Git](https://git-scm.com/) (for version control)
+`POAPDapp` stores:
 
-## Installation
+- the active `poapNftContract`;
+- `bytes32 codeHash`;
+- `uint256 claimDeadline`;
+- controller admins; and
+- `hasClaimed(address)` state.
 
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/rocknwa/QIE-POAP.git
-   cd QIE-POAP
-   cd smart-contract
-   ```
+An attendee calls `mint(string code)`. The contract hashes the supplied code and compares it to `codeHash`, checks the deadline and duplicate state, marks the wallet as claimed before the external NFT mint, and then mints through the configured EventPOAP.
 
-2. **Install Dependencies**:
-   Install the required npm packages:
-   ```bash
-   npm install
-   ```
+The plaintext event code is not recoverable from contract state. Reconfiguring a claim calls `configureClaim(newCodeHash, newClaimDeadline)`, replacing both values for the currently active controller. It does not modify existing NFTs or reset previous `hasClaimed` entries.
 
+Because `mint(code)` includes the plaintext code in calldata, the code may become publicly visible after a claim. Event codes must not be used as sensitive secrets.
 
-3. **Set Up Hardhat Configuration**:
-   Ensure your `hardhat.config.js` is configured. A sample configuration is:
- ```javascript
-require("@nomicfoundation/hardhat-toolbox");
-require('dotenv').config();
+### Event NFT
 
-module.exports = {
-  solidity: {
-    version: "0.8.28",
-  },
+`EventPOAP`:
 
-  networks: {
-    "qie-testnet": {
-      url: "https://rpc1testnet.qie.digital",
-      accounts: [process.env.WALLET_KEY],
-      gasPrice: 1000000000,
-    },
-  },
+- is an ERC-721 attendance credential;
+- can only be minted by the configured PEOPLE controller;
+- disables transfers;
+- disables approvals; and
+- returns the event metadata URI for its tokens.
 
-  etherscan: {
-    apiKey: {
-      'qie-testnet': 'empty'
-    },
-    customChains: [
-      {
-        network: "qie-testnet",
-        chainId: 1983,
-        urls: {
-          apiURL: "https://testnet.qie.digital/api",   
-          browserURL: "https://testnet.qie.digital"
-        }
-      }
-    ]
-  },
+### Factory
 
-  sourcify: {
-    enabled: false,
-  },
-};
- 
- ```
+`POAPFactory` is not permissionless:
 
-## Project Structure
+- owner and approved factory admins can create EventPOAP collections;
+- only the owner can add/remove factory admins; and
+- public attendee wallets cannot create collections through the factory.
 
-```
-poap-smart-contract/
-├── contracts/
-│   ├── POAPDapp.sol         # Main contract for managing POAP minting
-│   ├── POAPNFT.sol         # ERC721 soulbound NFT contract
-├── test/
-│   ├── POAPDapp.js         # Test suite for POAPDapp and POAPNFT
-├── hardhat.config.js       # Hardhat configuration
-├── package.json            # Project dependencies
-└── README.md               # Project documentation
-```
+`POAPDapp` has its own separate owner/admin scope for claim configuration and NFT activation.
 
-## Contracts Overview
+## Bohr deployment
 
-### POAPDapp
-- **Purpose**: Manages the issuance of POAP NFTs with code-based access control.
-- **Key Functions**:
-  - `updateCode(string)`: Allows admins to set a new valid code (24-hour validity).
-  - `updateNFTContract(address)`: Allows admins to update the NFT contract address.
-  - `stopMinting()`: Disables minting by setting the NFT contract address to zero.
-  - `mint(string)`: Mints an NFT to the caller if they provide a valid code, the code hasn't expired, and they haven't minted before.
-  - `addAdmin(address)` / `removeAdmin(address)`: Manages admin permissions.
-  - `getCode()`: Allows admins to view the current valid code.
+- Chain ID: `968`
+- RPC: `https://rpc.bohr.life`
+- Explorer: `https://scan.bohr.life`
+- `POAPDapp`: `0x1807F7c4984f5188e948C2e828fadE1b2F0011eb`
+- `POAPFactory`: `0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06`
 
-### POAPNFT
-- **Purpose**: Implements an ERC721 token with soulbound properties (non-transferable).
-- **Key Features**:
-  - Uses `ERC721Enumerable` for token enumeration.
-  - Overrides `_beforeTokenTransfer` to prevent transfers, allowing only minting (from `address(0)`) and burning (to `address(0)`).
-  - `mint(address)`: Mints a new NFT (currently public, see [Security Considerations](#security-considerations)).
+Both contracts are verified on the Bohr explorer.
 
-## Usage
+## Development
 
-### Compiling Contracts
-Compile the smart contracts using Hardhat:
 ```bash
+cd smart-contract
+npm ci
 npx hardhat compile
+npm test
 ```
 
-### Running Tests
-Run the comprehensive test suite to verify contract functionality:
-```bash
-npx hardhat test
+The current pilot suite has 15 passing tests covering factory access, NFT mint restrictions, soulbound behavior, claim configuration, admin authorization, successful claims, wrong-code rejection, duplicate claims, expiration and stopped minting.
+
+## Deployment
+
+Use a dedicated development/deployment wallet funded with test BOT. Store its key only in local/deployment secrets:
+
+```env
+WALLET_KEY=0x...
 ```
 
-The test suite (`test/POAPDapp.js`) covers:
-- Deployment and ownership setup
-- Admin management (adding/removing admins)
-- Code management (updating valid codes)
-- NFT contract management (updating/stopping minting)
-- Minting functionality (valid/invalid codes, expiration, double minting prevention)
-- Soulbound restrictions (preventing NFT transfers)
+The successful Bohr pilot deployment required an explicit priority fee because the RPC enforces a minimum effective tip. Do not commit private keys or `.env` files.
 
- 
-- **Code Expiration**: Codes expire after 24 hours, but ensure admins update codes regularly to maintain security.
-- **Admin Privileges**: Only trusted addresses should be added as admins to prevent unauthorized code or contract changes.
+## Scope note
 
-## Testing
-The test suite (`test/POAPDapp.js`) includes 18 tests covering all major functionalities. To run:
-```bash
-npx hardhat test
+The current `POAPDapp` is intentionally a **single-event pilot controller**. Replacing the active NFT or claim code does not create isolated per-event claim history; `hasClaimed` belongs to the controller. A future multi-event version should introduce event-scoped claim state (for example `claimed[eventId][wallet]`) before using one controller concurrently across multiple events.
+
+## POAPDapp V2
+
+V2 scopes duplicate protection by collection:
+
+```solidity
+mapping(address => mapping(address => bool)) public hasClaimed;
+// hasClaimed[nftContract][attendee]
 ```
 
-Example test output:
-```
-  POAPDapp
-    Deployment
-      ✔ Should set the owner correctly
-      ✔ Should set deployer as admin
-    Admin Management
-      ✔ Should allow owner to add admin
-      ✔ Should allow owner to remove admin
-      ✔ Should prevent non-owners from adding admins
-    Code Management
-      ✔ Should allow admin to update code
-      ✔ Should prevent non-admins from updating code
-    NFTConst Management
-      ✔ Should allow admin to update NFT contract
-      ✔ Should allow admin to stop minting
-      ✔ Should prevent non-admins from updating NFT contract
-    Minting
-      ✔ Should allow minting with valid code
-      ✔ Should prevent minting with invalid code
-      ✔ Should prevent minting if contract is stopped
-      ✔ Should prevent minting if code is expired
-      ✔ Should prevent double minting
-    Soulbound Restrictions
-      ✔ Should allow minting (initial transfer from address(0))
-      ✔ Should prevent transferring NFT to another address
-      ✔ Should prevent safe transferring NFT to another address
+`activateEvent(address nft, bytes32 codeHash, uint256 deadline)` atomically selects a collection and its claim settings. `configureClaim` rotates the code/deadline for the active event without resetting claim history. `updateNFTContract` is retained as a lower-level admin function but deliberately clears code/deadline; normal organizer UI should use `activateEvent`.
 
-  18 passing (4s)
-```
-
-## Contributing
-Contributions are welcome! To contribute:
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Make your changes and commit (`git commit -m "Add your feature"`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a pull request.
-
-Please ensure all tests pass and add new tests for any new functionality.
-
-
-## Contact
-For questions or support, contact anitherock44@gmail.com or open an issue on GitHub.
+The existing factory remains deployed. Deploy only the new controller with `scripts/deploy-poap-v2.js`, verify it, then point the frontend at the new controller before creating future collections.

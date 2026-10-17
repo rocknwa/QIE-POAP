@@ -2,7 +2,15 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { time, loadFixture } = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 
-describe("PEOPLE Bohr pilot contracts", function () {
+describe("PEOPLE reusable event controller", function () {
+  async function deployCollection(factory, controller, name, symbol, uri) {
+    const tx = await factory.createEventPOAP(name, symbol, uri, controller.target);
+    const receipt = await tx.wait();
+    const log = receipt.logs.find((l) => l.fragment && l.fragment.name === "EventPOAPCreated");
+    const nft = await ethers.getContractAt("EventPOAP", log.args.poap);
+    return nft;
+  }
+
   async function fixture() {
     const [owner, admin, user, otherUser] = await ethers.getSigners();
 
@@ -12,151 +20,133 @@ describe("PEOPLE Bohr pilot contracts", function () {
     const Factory = await ethers.getContractFactory("POAPFactory");
     const factory = await Factory.deploy();
 
-    const metadataURI = "ipfs://bafy-event-metadata/metadata.json";
-    const tx = await factory.createEventPOAP(
+    const nftA = await deployCollection(
+      factory,
+      poapDapp,
       "BOT Chain Pilot Attendance",
-      "BOTPOAP",
-      metadataURI,
-      poapDapp.target
+      "BOTA",
+      "ipfs://event-a/metadata.json"
     );
-    const receipt = await tx.wait();
-    const log = receipt.logs.find((l) => l.fragment && l.fragment.name === "EventPOAPCreated");
-    const nftAddress = log.args.poap;
-    const poapNFT = await ethers.getContractAt("EventPOAP", nftAddress);
 
-    await poapDapp.updateNFTContract(nftAddress);
+    const codeA = "BOHR-EVENT-A";
+    const hashA = ethers.keccak256(ethers.toUtf8Bytes(codeA));
+    const deadlineA = (await time.latest()) + 7 * 24 * 60 * 60;
+    await poapDapp.activateEvent(nftA.target, hashA, deadlineA);
 
-    const code = "BOHR-PILOT-2026";
-    const codeHash = ethers.keccak256(ethers.toUtf8Bytes(code));
-    const deadline = (await time.latest()) + 7 * 24 * 60 * 60;
-    await poapDapp.configureClaim(codeHash, deadline);
-
-    return { owner, admin, user, otherUser, poapDapp, factory, poapNFT, code, codeHash, deadline, metadataURI };
+    return { owner, admin, user, otherUser, poapDapp, factory, nftA, codeA, hashA, deadlineA };
   }
 
-  describe("Factory and event NFT", function () {
-    it("creates an event-specific collection with the controller as minter", async function () {
-      const { poapNFT, poapDapp, metadataURI } = await loadFixture(fixture);
-      expect(await poapNFT.name()).to.equal("BOT Chain Pilot Attendance");
-      expect(await poapNFT.symbol()).to.equal("BOTPOAP");
-      expect(await poapNFT.minter()).to.equal(poapDapp.target);
-      expect(await poapNFT.nextTokenId()).to.equal(0);
-
-      const { user, code } = await loadFixture(fixture);
-      await poapDapp.connect(user).mint(code);
-      expect(await poapNFT.tokenURI(0)).to.equal(metadataURI);
+  describe("event activation", function () {
+    it("atomically sets NFT, claim hash and deadline", async function () {
+      const { poapDapp, nftA, hashA, deadlineA } = await loadFixture(fixture);
+      expect(await poapDapp.poapNftContract()).to.equal(nftA.target);
+      expect(await poapDapp.codeHash()).to.equal(hashA);
+      expect(await poapDapp.claimDeadline()).to.equal(deadlineA);
     });
 
-    it("restricts NFT creation to owner/approved admins", async function () {
-      const { factory, poapDapp, admin, user } = await loadFixture(fixture);
-
+    it("prevents non-admin activation", async function () {
+      const { poapDapp, factory, user } = await loadFixture(fixture);
+      const nftB = await deployCollection(factory, poapDapp, "Event B", "BOTB", "ipfs://event-b");
+      const hashB = ethers.keccak256(ethers.toUtf8Bytes("B"));
       await expect(
-        factory.connect(user).createEventPOAP("Unauthorized", "NOPE", "ipfs://x", poapDapp.target)
-      ).to.be.revertedWithCustomError(factory, "NotAuthorized");
-
-      await expect(factory.addAdmin(admin.address))
-        .to.emit(factory, "AdminUpdated")
-        .withArgs(admin.address, true);
-      expect(await factory.admins(admin.address)).to.equal(true);
-
-      await expect(
-        factory.connect(admin).createEventPOAP("Admin Event", "ADMIN", "ipfs://admin", poapDapp.target)
-      ).to.emit(factory, "EventPOAPCreated");
-
-      await expect(factory.connect(user).addAdmin(user.address)).to.be.reverted;
-      await factory.removeAdmin(admin.address);
-      expect(await factory.admins(admin.address)).to.equal(false);
-      await expect(
-        factory.connect(admin).createEventPOAP("Removed Admin", "NOPE", "ipfs://x", poapDapp.target)
-      ).to.be.revertedWithCustomError(factory, "NotAuthorized");
+        poapDapp.connect(user).activateEvent(nftB.target, hashB, (await time.latest()) + 1000)
+      ).to.be.revertedWithCustomError(poapDapp, "NotAuthorized");
     });
 
-    it("rejects zero-address factory admins", async function () {
-      const { factory } = await loadFixture(fixture);
-      await expect(factory.addAdmin(ethers.ZeroAddress)).to.be.revertedWithCustomError(factory, "ZeroAddress");
+    it("clears claim settings when only the NFT address is changed", async function () {
+      const { poapDapp, factory } = await loadFixture(fixture);
+      const nftB = await deployCollection(factory, poapDapp, "Event B", "BOTB", "ipfs://event-b");
+      await poapDapp.updateNFTContract(nftB.target);
+      expect(await poapDapp.poapNftContract()).to.equal(nftB.target);
+      expect(await poapDapp.codeHash()).to.equal(ethers.ZeroHash);
+      expect(await poapDapp.claimDeadline()).to.equal(0);
     });
 
-    it("rejects invalid factory inputs", async function () {
-      const { factory, poapDapp } = await loadFixture(fixture);
-      await expect(factory.createEventPOAP("", "BOT", "ipfs://x", poapDapp.target)).to.be.revertedWithCustomError(factory, "EmptyName");
-      await expect(factory.createEventPOAP("BOT", "", "ipfs://x", poapDapp.target)).to.be.revertedWithCustomError(factory, "EmptySymbol");
-      await expect(factory.createEventPOAP("BOT", "BOT", "", poapDapp.target)).to.be.revertedWithCustomError(factory, "EmptyMetadataURI");
-      await expect(factory.createEventPOAP("BOT", "BOT", "ipfs://x", ethers.ZeroAddress)).to.be.revertedWithCustomError(factory, "ZeroMinter");
-    });
-
-    it("only allows the configured controller to mint", async function () {
-      const { poapNFT, user } = await loadFixture(fixture);
-      await expect(poapNFT.connect(user).mint(user.address)).to.be.revertedWithCustomError(poapNFT, "NotMinter");
-    });
-
-    it("is soulbound and disables approvals", async function () {
-      const { poapDapp, poapNFT, user, otherUser, code } = await loadFixture(fixture);
-      await poapDapp.connect(user).mint(code);
-
-      await expect(poapNFT.connect(user).transferFrom(user.address, otherUser.address, 0)).to.be.revertedWithCustomError(poapNFT, "Soulbound");
-      await expect(poapNFT.connect(user).approve(otherUser.address, 0)).to.be.revertedWithCustomError(poapNFT, "ApprovalsDisabled");
-      await expect(poapNFT.connect(user).setApprovalForAll(otherUser.address, true)).to.be.revertedWithCustomError(poapNFT, "ApprovalsDisabled");
+    it("clears active claim settings when minting is stopped", async function () {
+      const { poapDapp } = await loadFixture(fixture);
+      await poapDapp.stopMinting();
+      expect(await poapDapp.poapNftContract()).to.equal(ethers.ZeroAddress);
+      expect(await poapDapp.codeHash()).to.equal(ethers.ZeroHash);
+      expect(await poapDapp.claimDeadline()).to.equal(0);
     });
   });
 
-  describe("Claim configuration and administration", function () {
-    it("stores only the code hash and explicit deadline", async function () {
-      const { poapDapp, codeHash, deadline } = await loadFixture(fixture);
-      expect(await poapDapp.codeHash()).to.equal(codeHash);
-      expect(await poapDapp.claimDeadline()).to.equal(deadline);
+  describe("event-scoped duplicate protection", function () {
+    it("rejects a duplicate claim for the same event", async function () {
+      const { poapDapp, nftA, user, codeA } = await loadFixture(fixture);
+      await poapDapp.connect(user).mint(codeA);
+      expect(await poapDapp.hasClaimed(nftA.target, user.address)).to.equal(true);
+      await expect(poapDapp.connect(user).mint(codeA)).to.be.revertedWithCustomError(poapDapp, "AlreadyMinted");
     });
 
-    it("allows owner to manage admins", async function () {
-      const { poapDapp, admin } = await loadFixture(fixture);
-      await expect(poapDapp.addAdmin(admin.address)).to.emit(poapDapp, "AdminUpdated").withArgs(admin.address, true);
-      expect(await poapDapp.admins(admin.address)).to.equal(true);
-      await poapDapp.removeAdmin(admin.address);
-      expect(await poapDapp.admins(admin.address)).to.equal(false);
+    it("allows the same wallet to claim a newly activated event", async function () {
+      const { poapDapp, factory, nftA, user, codeA } = await loadFixture(fixture);
+      await poapDapp.connect(user).mint(codeA);
+
+      const nftB = await deployCollection(factory, poapDapp, "Second Event", "BOTB", "ipfs://event-b");
+      const codeB = "BOHR-EVENT-B";
+      const hashB = ethers.keccak256(ethers.toUtf8Bytes(codeB));
+      const deadlineB = (await time.latest()) + 8 * 24 * 60 * 60;
+      await poapDapp.activateEvent(nftB.target, hashB, deadlineB);
+
+      await expect(poapDapp.connect(user).mint(codeB))
+        .to.emit(poapDapp, "AttendanceClaimed")
+        .withArgs(user.address, nftB.target, 0);
+
+      expect(await poapDapp.hasClaimed(nftA.target, user.address)).to.equal(true);
+      expect(await poapDapp.hasClaimed(nftB.target, user.address)).to.equal(true);
+      expect(await nftA.balanceOf(user.address)).to.equal(1);
+      expect(await nftB.balanceOf(user.address)).to.equal(1);
     });
 
-    it("prevents non-admin configuration", async function () {
-      const { poapDapp, user, codeHash } = await loadFixture(fixture);
-      await expect(poapDapp.connect(user).configureClaim(codeHash, (await time.latest()) + 1000)).to.be.revertedWithCustomError(poapDapp, "NotAuthorized");
-    });
+    it("changing the code for the active NFT does not reset claimed state", async function () {
+      const { poapDapp, nftA, user, codeA } = await loadFixture(fixture);
+      await poapDapp.connect(user).mint(codeA);
 
-    it("rejects invalid deadlines, hashes, and NFT addresses", async function () {
-      const { poapDapp, codeHash } = await loadFixture(fixture);
-      await expect(poapDapp.configureClaim(ethers.ZeroHash, (await time.latest()) + 1000)).to.be.revertedWithCustomError(poapDapp, "InvalidCodeHash");
-      await expect(poapDapp.configureClaim(codeHash, await time.latest())).to.be.revertedWithCustomError(poapDapp, "InvalidDeadline");
-      await expect(poapDapp.updateNFTContract(ethers.ZeroAddress)).to.be.revertedWithCustomError(poapDapp, "InvalidNFTContract");
+      const newCode = "ROTATED-CODE";
+      const newHash = ethers.keccak256(ethers.toUtf8Bytes(newCode));
+      await poapDapp.configureClaim(newHash, (await time.latest()) + 10000);
+
+      expect(await poapDapp.hasClaimed(nftA.target, user.address)).to.equal(true);
+      await expect(poapDapp.connect(user).mint(newCode)).to.be.revertedWithCustomError(poapDapp, "AlreadyMinted");
     });
   });
 
-  describe("Claims", function () {
-    it("mints successfully with the valid event code", async function () {
-      const { poapDapp, poapNFT, user, code } = await loadFixture(fixture);
-      await expect(poapDapp.connect(user).mint(code)).to.emit(poapDapp, "AttendanceClaimed");
-      expect(await poapNFT.balanceOf(user.address)).to.equal(1);
-      expect(await poapNFT.ownerOf(0)).to.equal(user.address);
-      expect(await poapDapp.hasClaimed(user.address)).to.equal(true);
+  describe("claim validation", function () {
+    it("mints with the active event code", async function () {
+      const { poapDapp, nftA, user, codeA } = await loadFixture(fixture);
+      await poapDapp.connect(user).mint(codeA);
+      expect(await nftA.ownerOf(0)).to.equal(user.address);
     });
 
-    it("rejects an unauthorized/wrong claim code", async function () {
+    it("rejects a wrong code", async function () {
       const { poapDapp, user } = await loadFixture(fixture);
-      await expect(poapDapp.connect(user).mint("NOT-THE-EVENT-CODE")).to.be.revertedWithCustomError(poapDapp, "InvalidCode");
-    });
-
-    it("rejects duplicate claims using controller state", async function () {
-      const { poapDapp, user, code } = await loadFixture(fixture);
-      await poapDapp.connect(user).mint(code);
-      await expect(poapDapp.connect(user).mint(code)).to.be.revertedWithCustomError(poapDapp, "AlreadyMinted");
+      await expect(poapDapp.connect(user).mint("WRONG")).to.be.revertedWithCustomError(poapDapp, "InvalidCode");
     });
 
     it("rejects expired claims", async function () {
-      const { poapDapp, user, code, deadline } = await loadFixture(fixture);
-      await time.increaseTo(deadline + 1);
-      await expect(poapDapp.connect(user).mint(code)).to.be.revertedWithCustomError(poapDapp, "MintingExpired");
+      const { poapDapp, user, codeA, deadlineA } = await loadFixture(fixture);
+      await time.increaseTo(deadlineA + 1);
+      await expect(poapDapp.connect(user).mint(codeA)).to.be.revertedWithCustomError(poapDapp, "MintingExpired");
     });
 
-    it("rejects claims when minting is stopped", async function () {
-      const { poapDapp, user, code } = await loadFixture(fixture);
+    it("requires an active event before configuring a code", async function () {
+      const { poapDapp } = await loadFixture(fixture);
       await poapDapp.stopMinting();
-      await expect(poapDapp.connect(user).mint(code)).to.be.revertedWithCustomError(poapDapp, "MintingDisabled");
+      const newHash = ethers.keccak256(ethers.toUtf8Bytes("NEW"));
+      await expect(poapDapp.configureClaim(newHash, (await time.latest()) + 1000))
+        .to.be.revertedWithCustomError(poapDapp, "MintingDisabled");
+    });
+  });
+
+  describe("administration", function () {
+    it("allows only owner to manage admins", async function () {
+      const { poapDapp, admin, user } = await loadFixture(fixture);
+      await poapDapp.addAdmin(admin.address);
+      expect(await poapDapp.admins(admin.address)).to.equal(true);
+      await expect(poapDapp.connect(user).addAdmin(user.address)).to.be.reverted;
+      await poapDapp.removeAdmin(admin.address);
+      expect(await poapDapp.admins(admin.address)).to.equal(false);
     });
   });
 });

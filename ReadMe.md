@@ -1,115 +1,87 @@
-# Project Documentation: PEOPLE - Decentralized Proof of Attendance Token System
+# PEOPLE — Verifiable Event Attendance
 
-## Overview
-PEOPLE is a decentralized application designed to automate the distribution of Proof of Attendance Tokens (NFTs) for event organizers, eliminating the manual stress of airdropping NFTs. It also serves as an educational platform, offering newbies a hands-on experience with dApps during onboarding programs. Built on QIE Blockchain, the DApp leverages smart contracts, a user-friendly frontend, and Web3 libraries to ensure accessibility and scalability.
+PEOPLE is a Web3 event-attendance platform that lets organizers create event-specific soulbound NFTs and lets attendees claim verifiable proof of participation directly to their wallets.
 
-### Problem Statement
-- **Event Organizers**: Manually airdropping NFTs is time-consuming, error-prone, and costly.
-- **New Users**: Lack of intuitive platforms to learn dApp interactions during Web3 onboarding.
-PEOPLE solves these by automating NFT minting and providing a mobile-optimized, beginner-friendly interface.
+The current implementation includes a focused BOT Chain Bohr testnet pilot while preserving the historical QIE deployment.
 
-### Solution
-The DApp features a smart contract that handles code-based NFT minting, admin management, and ownership controls. The frontend, built with Next.js, Wagmi, and RainbowKit, offers a seamless experience for users to mint POAPs and for admins to manage the system. Future enhancements will scale the contract and introduce gasless minting.
+## Current architecture
 
-## Current Development Stage
- 
+- **POAPFactory** — owner/admin-restricted deployment of event-specific attendance NFT collections.
+- **EventPOAP** — non-transferable ERC-721 credential with event metadata stored on IPFS.
+- **POAPDapp** — single-event claim controller with hashed claim codes, explicit deadlines and duplicate-claim state.
+- **Next.js frontend** — organizer dashboard, attendee claim flow and My POAPs gallery.
+- **Pinata/IPFS** — artwork and event metadata uploaded through a server-side route; no attendee PII is required in public metadata.
+- **Wagmi + RainbowKit** — wallet and Bohr network integration.
 
-- **Smart Contract**: A functional POAP contract (`0xdF6A1Da673B623D9e1c6c538f4653d4429284429`) is deployed, supporting minting, code updates, NFT contract address management, and admin/owner roles. Features like code validation (e.g., `InvalidCode`, `MintingExpired`) and uniqueness are implemented.
-- **Frontend**:
-  - **Home Page (`HomeContent.tsx`)**: Users can connect wallets, enter codes, and mint POAP NFTs with real-time feedback (e.g., toast notifications, transaction confirmation).
-  - **Admin Dashboard (`Dashboard.tsx`)**: Admins and owners can update codes, NFT contracts, stop minting, and manage admin roles. Clickable refresh for code and NFT contract displays is functional, with automatic refreshes post-transaction.
-  - **Navigation (`RootLayout.tsx`)**: Includes a dropdown menu with a "Dashboard" link, styled for visibility (currently white background, black text).
-- **Wallet Integration**: Wagmi and RainbowKit enable wallet connectivity, with mobile optimization for small screens (e.g., avatar-based account status).
-- **Issues Addressed**: Resolved hydration errors, 404 static file errors (pending proper deployment), and TypeScript/ESLint issues (e.g., `any` type removal).
- 
+## Bohr pilot
 
-## User, Admin, and Owner Flows
+- Network: Bohr testnet (`968`)
+- `POAPDapp`: `0x1807F7c4984f5188e948C2e828fadE1b2F0011eb`
+- `POAPFactory`: `0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06`
+- Explorer: `https://scan.bohr.life`
 
-### User Flow
-1. **Access the DApp**:
-   - Users visit the home page and see a call-to-action to collect POAPs.
-2. **Wallet Connection**:
-   - Click the ConnectButton (RainbowKit) to link a wallet (e.g., MetaMask). If disconnected, a message prompts connection.
-3. **Minting Process**:
-   - Enter a code provided by an event organizer in the input field.
-   - Click "Claim POAP" to initiate minting.
-   - **Validation**:
-     - If no code or no wallet, displays an error (e.g., "Please connect your wallet" or "Please enter a valid code") via toast.
-     - If valid, sends a transaction using `writeContractAsync` from Wagmi.
-   - **Feedback**:
-     - Shows a spinner during pending/confirming states.
-     - On success, displays "Minting successful!" with the transaction hash.
-4. **NFT Ownership**:
-   - The minted POAP NFT is transferred to the user's wallet, verifiable on the blockchain.
+The two core contracts are source-verified.
 
-### Admin Flow
-1. **Access the Dashboard**:
-   - Navigate to `/dashboard` via the "Explore" dropdown.
-   - Only accessible if the connected wallet is an admin (determined by successful `getCode` call) or owner.
-2. **View Current State**:
-   - See "Current NFT Contract" and "Current Code" with clickable refresh buttons to update data from the contract.
-3. **Manage Settings**:
-   - **Update Code**: Enter a new code, click "Update Code" to submit a transaction, and refresh automatically on success.
-   - **Update NFT Contract**: Input a new NFT contract address, submit, and refresh on success.
-   - **Stop Minting**: Click "Stop Minting" to disable further minting (owner-only).
-4. **Feedback**:
-   - Toast notifications confirm actions (e.g., "Code updated successfully").
-   - Spinners indicate pending/confirming states.
+## Organizer flow
 
-### Owner Flow
-1. **Extended Access**:
-   - In addition to admin privileges, owners (determined by the `owner` contract variable) can manage admin roles.
-2. **Admin Management**:
-   - **Add Admin**: Enter an address, click "Add Admin" to grant admin rights.
-   - **Remove Admin**: Enter an address, click "Remove Admin" to revoke rights.
-3. **Oversight**:
-   - Monitor all admin actions and contract state via the dashboard.
+1. Connect an owner or authorized organizer wallet.
+2. Upload event artwork, name, symbol and description.
+3. Pin artwork/metadata to IPFS and create an EventPOAP through the factory.
+4. Activate the created NFT in `POAPDapp`.
+5. Configure a claim code and deadline.
+6. Share the event code with attendees.
+7. Review claim status and manage admins from the dashboard.
 
-## Technology Stack
-- **Blockchain**: QIE Blockchain.
-- **Smart Contract**: Solidity.
-- **Frontend**: Next.js, TypeScript, Tailwind CSS.
-- **Wallet Integration**: Wagmi (e.g., `useReadContract`, `useWriteContract`), RainbowKit (mobile-optimized UI).
-- **Libraries**: React, react-toastify.
+Factory permissions and claim-controller permissions are deliberately separate. Only the relevant contract owner can grant or revoke admins.
 
-## Benefits and Problem Solving
-- **Event Organizers**: Automates airdrops, reducing manual effort and errors.
-- **Newbies**: Offers a guided minting experience, enhancing Web3 onboarding.
+## Claim-code behavior
 
-## Mobile Compatibility with Wagmi and RainbowKit
-- **Wagmi**: Provides hooks for contract interaction, ensuring real-time updates on mobile devices. Its reactive nature adapts to wallet changes seamlessly.
-- **RainbowKit**: Offers a compact wallet UI with avatar-based status on small screens, enhancing mobile usability.
+Only `keccak256(code)` is stored as `codeHash`. The plaintext code cannot be retrieved from the blockchain or dashboard after configuration.
 
-## Future Enhancements
+The dashboard displays whether a code is configured and allows an authorized owner/admin to replace it. Updating claim settings replaces both the code hash and deadline for the currently active event NFT. Existing minted NFTs are unaffected, and existing `hasClaimed` entries are not cleared.
 
-1. **Scalable Smart Contract**:
-   - **NFT Contract Factory**: The POAP contract will evolve into a factory, enabling admins to deploy new NFT contracts effortlessly. The POAP contract will serve as the default owner, ensuring consistency and compatibility across all deployed NFT contracts.
-   - **Multi-Admin Management**: Multiple admins can manage the smart contract and deploy NFT contracts simultaneously without interference. Each admin can create unique POAPs for different events, leveraging the same POAP contract infrastructure.
+When an attendee claims, the plaintext code is submitted in transaction calldata and can therefore become public after the transaction. Event claim codes should be treated as temporary event credentials, not passwords.
 
-2. **Enhanced Admin Dashboard**:
-   - **Simplified NFT Deployment**: Admins will upload images and metadata descriptions via an IPFS gateway to create and deploy NFT contracts. The interface will guide admins through the process, requiring no deep technical knowledge.
-   - **Event Posting with Timestamp Categorization**: Admins will post event details (e.g., name, description, date) to the smart contract. The contract will use timestamps to categorize events into:
-     - **Future Events**: Upcoming events (date > current timestamp).
-     - **Past Events**: Completed events (date < current timestamp).
-     - **Present Events**: Ongoing events (date within a configurable window, e.g., ±24 hours).
-     This categorization will be reflected in the frontend, simplifying event discovery for users.
+## Attendee flow
 
-3. **User-Focused Features**:
-   - **My POAPs Section**: A dedicated dashboard section will display all POAP NFTs claimed by the connected user. This will query the user's wallet address against the POAP contract to fetch minted NFTs, including metadata (e.g., event name, date) and IPFS-linked images. The section will support pagination for large collections and provide links to view NFTs on blockchain explorers.
-   - **Web3 Community Links**: A new section on the home page will include curated links to join Web3 communities (e.g., Discord servers, Telegram groups, forums) related to events or POAPs. These links will be maintained by admins and updated to foster user engagement and networking.
+1. Connect a wallet on Bohr.
+2. Enter the event claim code before the deadline.
+3. Claim the soulbound attendance NFT.
+4. View the credential in **My POAPs** and open it on the Bohr explorer.
 
-4. **Gasless Minting**:
-   - Implement gasless NFT minting for users. Tight security restrictions, such as rate limiting, code expiration, and allowlist integration, will prevent abuse and ensure gas savings are not exploited by malicious actors.
+Transfers and approvals are disabled for EventPOAP credentials.
 
-5. **Multiple POAP Support**:
-   - Different admins can deploy their own NFT contracts compatible with the POAP contract, allowing multiple events to utilize the system without conflicts. Users can mint unique, verifiable POAP NFTs corresponding to their codes, with the system ensuring distinctiveness across all events.
-  
-   - If you want to test the project, send a message to anitherock44@gmail.com to add your wallet address as admin. Or clone the repo and re-deploy the smart contracts to play around with the Dapp
+## Local development
 
-## Project Team Members
-- **Therock Ani (CTO)**:
-  - A seasoned blockchain developer with expertise in DeFi and DApp development, passionate about user-friendly solutions.
- 
+Contracts:
 
-## Conclusion
-PEOPLE is in alpha, with a functional core for minting and admin management. Future enhancements will scale the system, enhance accessibility, and optimize costs, making it a versatile platform for event organizers and Web3 newcomers.
+```bash
+cd smart-contract
+npm ci
+npm test
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
+npm run build
+npm run dev
+```
+
+See `BOHR_PILOT.md`, `smart-contract/readme.md`, `frontend/readme.md` and `frontend/STITCH_INTEGRATION.md` for implementation details.
+
+## Pilot scope
+
+The current controller is intentionally single-event. A future multi-event controller should use event-scoped configuration and claim state before one controller is reused for independent simultaneous events.
+
+## Reusable event controller (V2)
+
+The Bohr pilot now uses a reusable claim-controller design. Claim state is scoped by event NFT collection (`hasClaimed[nft][attendee]`), so one wallet may claim once for Event A and later claim once for Event B.
+
+A new event is activated atomically with `activateEvent(nft, codeHash, deadline)`. This immediately replaces the prior active event and its claim settings in one transaction. Updating the code/deadline with `configureClaim` affects only the currently active event and does not reset existing claims for that NFT.
+
+The existing `POAPFactory` remains the permanent registry source for event collections. The My POAPs page reads `EventPOAPCreated` and ERC-721 `Transfer` mint events, so previously claimed credentials remain visible even after another event becomes active.
+
+The first deployed Bohr controller is not upgradeable. V2 therefore requires a new controller deployment. Existing EventPOAPs and already minted NFTs remain valid; new collections must be created with the V2 controller as their minter. Upgradeability (for example UUPS with timelocked governance and storage-layout tests) can be assessed separately before a production mainnet version.
