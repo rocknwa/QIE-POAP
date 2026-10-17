@@ -57,7 +57,7 @@ Contracts: create `smart-contract/.env` with `WALLET_KEY` only in a secure local
 
 ## Validation
 
-The Bohr pilot contract test suite currently covers 15 passing cases, including:
+The Bohr pilot contract test suite currently covers 12 passing cases, including:
 
 1. successful claim;
 2. wrong-code rejection;
