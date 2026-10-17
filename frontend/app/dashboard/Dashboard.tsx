@@ -6,6 +6,7 @@ import { isAddress, keccak256, parseEventLogs, toBytes, zeroAddress, zeroHash } 
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { poapDappAbi, poapFactoryAbi, POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS } from "../constants";
+import { transactionErrorMessage } from "../../lib/transactionError";
 
 function shortAddress(value?: string) {
   if (!value) return "—";
@@ -86,7 +87,7 @@ export default function Dashboard() {
       setCreatedNft(nft);
       toast.success("Event credential created. Activate it when you are ready to accept claims.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to create event NFT");
+      toast.error(transactionErrorMessage(error, "Unable to create the event NFT. Please try again."));
     } finally { setBusy(false); }
   }
 
@@ -115,7 +116,7 @@ export default function Dashboard() {
       } else {
         toast.success(claimCodeConfigured ? "Claim code and deadline updated for the active event." : "Claim code and deadline configured for the active event.");
       }
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Claim configuration failed"); }
+    } catch (error) { toast.error(transactionErrorMessage(error, "Unable to update the event claim settings. Please try again.")); }
     finally { setBusy(false); }
   }
 
@@ -128,7 +129,7 @@ export default function Dashboard() {
       await publicClient.waitForTransactionReceipt({ hash });
       await Promise.all([refetchNft(), refetchDeadline(), refetchCodeHash()]);
       toast.success("Minting stopped.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to stop minting"); }
+    } catch (error) { toast.error(transactionErrorMessage(error, "Unable to stop minting. Please try again.")); }
     finally { setBusy(false); }
   }
 
@@ -155,7 +156,7 @@ export default function Dashboard() {
       await publicClient.waitForTransactionReceipt({ hash });
       toast.success(`${scope === "dapp" ? "Claim" : "Factory"} admin ${action === "add" ? "added" : "removed"}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update admin access");
+      toast.error(transactionErrorMessage(error, "Unable to update admin access. Please try again."));
     } finally {
       setBusy(false);
     }

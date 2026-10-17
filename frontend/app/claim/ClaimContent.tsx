@@ -5,15 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { keccak256, toBytes, zeroAddress, zeroHash } from "viem";
 import { POAP_DAPP_ADDRESS, poapDappAbi } from "../constants";
-
-function friendlyError(message: string) {
-  if (message.includes("MintingDisabled")) return "Claims are currently disabled for this event.";
-  if (message.includes("InvalidCode")) return "That event code is not valid.";
-  if (message.includes("MintingExpired")) return "The claim period for this event has ended.";
-  if (message.includes("AlreadyMinted")) return "This wallet already claimed the attendance credential.";
-  if (message.includes("User rejected") || message.includes("rejected the request")) return "The transaction was cancelled in your wallet.";
-  return "The claim could not be completed. Please check the code and try again.";
-}
+import { transactionErrorMessage } from "../../lib/transactionError";
 
 export default function ClaimContent() {
   const [code, setCode] = useState("");
@@ -54,13 +46,11 @@ export default function ClaimContent() {
     if (!POAP_DAPP_ADDRESS) return setUiError("The Bohr claim contract is not configured.");
     if (!eventActive) return setUiError("There is no active event to claim right now.");
     if (expired) return setUiError("The claim period for this event has ended.");
-    if (claimed) return setUiError("This wallet already claimed the attendance credential.");
+    if (claimed) return setUiError("This wallet has already claimed this event.");
     if (!code.trim()) return setUiError("Enter the event claim code.");
     if (codeHashLoading || !currentCodeHash) return setUiError("Claim settings are still loading. Try again in a moment.");
     if (currentCodeHash === zeroHash) return setUiError("This event does not have a claim code configured yet.");
 
-    // UX preflight only: the contract still performs the authoritative check.
-    // This avoids opening the wallet for an obviously wrong code.
     const submittedCodeHash = keccak256(toBytes(code.trim()));
     if (submittedCodeHash.toLowerCase() !== String(currentCodeHash).toLowerCase()) {
       return setUiError("That event code is not valid. Check the code and try again.");
@@ -74,8 +64,7 @@ export default function ClaimContent() {
         args: [code.trim()],
       });
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      setUiError(friendlyError(msg));
+      setUiError(transactionErrorMessage(error, "The claim could not be completed. Please try again."));
     }
   }
 
