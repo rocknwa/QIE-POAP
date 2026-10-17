@@ -1,13 +1,53 @@
+ function collectErrorText(error: unknown): string {
+  const seen = new Set<unknown>();
+  const parts: string[] = [];
+
+  function walk(value: unknown, depth = 0) {
+    if (value == null || depth > 5 || seen.has(value)) return;
+
+    if (typeof value === "string") {
+      parts.push(value);
+      return;
+    }
+
+    if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") {
+      parts.push(String(value));
+      return;
+    }
+
+    if (typeof value !== "object") return;
+
+    seen.add(value);
+
+    const obj = value as Record<string, unknown>;
+
+    for (const key of [
+      "name",
+      "message",
+      "shortMessage",
+      "details",
+      "reason",
+      "code",
+      "data",
+      "metaMessages",
+      "cause",
+    ]) {
+      if (key in obj) {
+        walk(obj[key], depth + 1);
+      }
+    }
+  }
+
+  walk(error);
+
+  return parts.join(" ").toLowerCase();
+}
+
 export function transactionErrorMessage(
   error: unknown,
   fallback = "The transaction could not be completed. Please try again."
 ): string {
-  const raw =
-    error instanceof Error
-      ? `${error.name} ${error.message} ${(error as Error & { shortMessage?: string }).shortMessage || ""}`
-      : String(error ?? "");
-
-  const message = raw.toLowerCase();
+  const message = collectErrorText(error);
 
   if (
     message.includes("insufficient funds") ||
@@ -15,8 +55,9 @@ export function transactionErrorMessage(
     message.includes("funds for gas") ||
     message.includes("exceeds balance") ||
     message.includes("intrinsic transaction cost") ||
-    message.includes("insufficient funds for intrinsic transaction cost") ||
-    message.includes("insufficient funds for gas * price + value")
+    message.includes("gas * price + value") ||
+    message.includes("max fee per gas less than block base fee") ||
+    message.includes("cannot afford tx gas")
   ) {
     return "Insufficient BOT balance to pay network gas.";
   }
@@ -28,10 +69,6 @@ export function transactionErrorMessage(
     message.includes("request rejected")
   ) {
     return "Transaction cancelled.";
-  }
-
-  if (message.includes("invalidcode") || message.includes("invalid code")) {
-    return "That event code is not valid. Check the code and try again.";
   }
 
   if (
@@ -80,11 +117,10 @@ export function transactionErrorMessage(
   }
 
   if (
-    message.includes("execution reverted") ||
-    message.includes("transaction reverted") ||
-    message.includes("reverted without a reason")
+    message.includes("invalidcode") ||
+    message.includes("invalid code")
   ) {
-    return fallback;
+    return "The event claim code changed before this transaction completed. Refresh and try again.";
   }
 
   if (
