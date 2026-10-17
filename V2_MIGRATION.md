@@ -52,7 +52,7 @@ Keep the existing Pinata and WalletConnect variables.
 
 ## Upgradeability later
 
-V2 is still a normal non-proxy deployment. If PEOPLE moves to an upgradeable production controller later, use a deliberate UUPS/transparent-proxy design with initializer protection, storage-layout regression checks, multisig/timelock upgrade authority and an explicit upgrade runbook. Do not retrofit proxy semantics onto the already deployed controllers.
+V2 is still a normal non-proxy deployment. If PEOPLE moves to an upgradeable production controller later, use a deliberate UUPS/transparent-proxy design with initializer protection, storage-layout regression checks, multisig/timelock upgrade authority and an explicit upgrade runbook. Do not retrofit proxy semantics onto the already deployed controllers. 
 
 
 ## Deployed V2 controller
