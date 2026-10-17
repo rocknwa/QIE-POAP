@@ -22,7 +22,7 @@ The script uses the Bohr fee settings already required by the network. Record th
 ## 3. Verify
 
 ```bash
-npx hardhat verify --network bohr <V2_POAP_DAPP_ADDRESS>
+npx hardhat verify --network bohr 0x506001C295d80944DE4ed4015af03Bb0E348aeB5
 ```
 
 ## 4. Update frontend
@@ -30,7 +30,7 @@ npx hardhat verify --network bohr <V2_POAP_DAPP_ADDRESS>
 Set:
 
 ```env
-NEXT_PUBLIC_POAP_DAPP_ADDRESS=<V2_POAP_DAPP_ADDRESS>
+NEXT_PUBLIC_POAP_DAPP_ADDRESS=0x506001C295d80944DE4ed4015af03Bb0E348aeB5
 NEXT_PUBLIC_POAP_FACTORY_ADDRESS=0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06
 NEXT_PUBLIC_POAP_FACTORY_DEPLOY_TX=0x62e6c6b2468aee10741f705f30e7917d365f9981261a255da9d2e5e0c9a1fcca
 ```
@@ -53,3 +53,10 @@ Keep the existing Pinata and WalletConnect variables.
 ## Upgradeability later
 
 V2 is still a normal non-proxy deployment. If PEOPLE moves to an upgradeable production controller later, use a deliberate UUPS/transparent-proxy design with initializer protection, storage-layout regression checks, multisig/timelock upgrade authority and an explicit upgrade runbook. Do not retrofit proxy semantics onto the already deployed controllers.
+
+
+## Deployed V2 controller
+
+`0x506001C295d80944DE4ed4015af03Bb0E348aeB5`
+
+The existing factory remains `0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06`.

@@ -1,65 +1,157 @@
-# PEOPLE — Verifiable Event Attendance
+# PEOPLE
 
-PEOPLE is a Web3 event-attendance platform that lets organizers create event-specific soulbound NFTs and lets attendees claim verifiable proof of participation directly to their wallets.
+PEOPLE is a Web3 event-attendance dApp for issuing and claiming verifiable, non-transferable attendance NFTs.
 
-The current implementation includes a focused BOT Chain Bohr testnet pilot while preserving the historical QIE deployment.
+The current pilot runs on **BOT Chain Bohr testnet** and is designed around a simple event flow: an organizer creates an event NFT, activates it with a claim code and deadline, attendees claim once for that event, and every claimed credential remains visible in **My POAPs**.
 
-## Current architecture
+## Current Bohr deployment
 
-- **POAPFactory** — owner/admin-restricted deployment of event-specific attendance NFT collections.
-- **EventPOAP** — non-transferable ERC-721 credential with event metadata stored on IPFS.
-- **POAPDapp** — single-event claim controller with hashed claim codes, explicit deadlines and duplicate-claim state.
-- **Next.js frontend** — organizer dashboard, attendee claim flow and My POAPs gallery.
-- **Pinata/IPFS** — artwork and event metadata uploaded through a server-side route; no attendee PII is required in public metadata.
-- **Wagmi + RainbowKit** — wallet and Bohr network integration.
+| Component | Address |
+| --- | --- |
+| `POAPDapp` V2 | `0x506001C295d80944DE4ed4015af03Bb0E348aeB5` |
+| `POAPFactory` | `0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06` |
+| Network | Bohr Testnet (`968`) |
 
-## Bohr pilot
+The original Bohr controller remains deployed at `0x1807F7c4984f5188e948C2e828fadE1b2F0011eb` for historical compatibility, but new event collections should use the V2 controller above.
 
-- Network: Bohr testnet (`968`)
-- `POAPDapp`: `0x1807F7c4984f5188e948C2e828fadE1b2F0011eb`
-- `POAPFactory`: `0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06`
-- Explorer: `https://scan.bohr.life`
+## How PEOPLE works
 
-The two core contracts are source-verified.
+```mermaid
+flowchart LR
+    A[Organizer connects wallet] --> B[Create event NFT]
+    B --> C[Artwork + metadata uploaded to IPFS]
+    C --> D[POAPFactory deploys EventPOAP]
+    D --> E[Organizer activates event]
+    E --> F[Set claim code hash + deadline]
+    F --> G[Attendee connects wallet]
+    G --> H[Frontend validates claim code hash]
+    H --> I[Attendee submits claim transaction]
+    I --> J[POAPDapp V2 checks deadline + duplicate state]
+    J --> K[EventPOAP mints soulbound NFT]
+    K --> L[Credential appears in My POAPs]
+```
+
+## Core contracts
+
+### `POAPDapp` V2
+
+The reusable attendance controller.
+
+It stores:
+- the currently active EventPOAP contract;
+- the active claim-code hash;
+- the active claim deadline;
+- owner/admin permissions; and
+- claim state scoped by NFT collection.
+
+Duplicate protection is event-specific:
+
+```solidity
+hasClaimed[nftContract][attendee]
+```
+
+A wallet can therefore claim Event A once, then later claim Event B once.
+
+### `POAPFactory`
+
+Creates event-specific `EventPOAP` collections.
+
+Only the factory owner or approved factory admins can create collections. Factory administration is separate from claim-controller administration.
+
+### `EventPOAP`
+
+A soulbound ERC-721 attendance credential.
+
+- Only its configured PEOPLE controller can mint.
+- Transfers are disabled.
+- Approvals are disabled.
+- Event metadata is stored on IPFS.
+- Attendee personal information is not placed in public metadata.
 
 ## Organizer flow
 
-1. Connect an owner or authorized organizer wallet.
-2. Upload event artwork, name, symbol and description.
-3. Pin artwork/metadata to IPFS and create an EventPOAP through the factory.
-4. Activate the created NFT in `POAPDapp`.
-5. Configure a claim code and deadline.
-6. Share the event code with attendees.
-7. Review claim status and manage admins from the dashboard.
+```mermaid
+sequenceDiagram
+    participant O as Organizer
+    participant UI as PEOPLE Dashboard
+    participant IPFS as Pinata / IPFS
+    participant F as POAPFactory
+    participant C as POAPDapp V2
 
-Factory permissions and claim-controller permissions are deliberately separate. Only the relevant contract owner can grant or revoke admins.
+    O->>UI: Enter event details + artwork
+    UI->>IPFS: Upload artwork + metadata
+    IPFS-->>UI: ipfs:// metadata URI
+    UI->>F: createEventPOAP(...)
+    F-->>UI: New EventPOAP address
+    O->>UI: Enter claim code + deadline
+    UI->>C: activateEvent(NFT, codeHash, deadline)
+    C-->>UI: Event active
+```
 
-## Claim-code behavior
+The dashboard never stores the plaintext claim code on-chain. It hashes the code before the transaction.
 
-Only `keccak256(code)` is stored as `codeHash`. The plaintext code cannot be retrieved from the blockchain or dashboard after configuration.
-
-The dashboard displays whether a code is configured and allows an authorized owner/admin to replace it. Updating claim settings replaces both the code hash and deadline for the currently active event NFT. Existing minted NFTs are unaffected, and existing `hasClaimed` entries are not cleared.
-
-When an attendee claims, the plaintext code is submitted in transaction calldata and can therefore become public after the transaction. Event claim codes should be treated as temporary event credentials, not passwords.
+Changing the code updates the current event's claim settings without changing already minted NFTs or resetting that event's claim history.
 
 ## Attendee flow
 
 1. Connect a wallet on Bohr.
-2. Enter the event claim code before the deadline.
-3. Claim the soulbound attendance NFT.
-4. View the credential in **My POAPs** and open it on the Bohr explorer.
+2. Open the active event claim screen.
+3. Enter the event claim code.
+4. The frontend hashes the entered code and compares it with the current on-chain hash before opening the wallet.
+5. Submit the claim transaction.
+6. `POAPDapp` performs the authoritative on-chain validation.
+7. Receive the soulbound attendance NFT.
+8. Open **My POAPs** to view all PEOPLE credentials owned by the wallet.
 
-Transfers and approvals are disabled for EventPOAP credentials.
+## My POAPs
 
-## Local development
+My POAPs is historical, not limited to the currently active event.
 
-Contracts:
+The frontend:
+1. reads `EventPOAPCreated` logs from the existing factory;
+2. discovers every PEOPLE event collection;
+3. checks mint `Transfer` events for the connected wallet;
+4. resolves each token's IPFS metadata and artwork; and
+5. displays every credential the wallet has claimed.
 
-```bash
-cd smart-contract
-npm ci
-npm test
+Changing the active event therefore does not remove older POAPs from the user's gallery.
+
+## Access control
+
+There are two independent admin domains:
+
+- **Claim controller admins** can activate events, update claim settings and stop minting.
+- **Factory admins** can create new EventPOAP collections.
+- Only the respective contract owner can grant or revoke admin access.
+
+The dashboard shows owner-only admin management controls only to the connected owner wallet.
+
+## Frontend stack
+
+- Next.js
+- React
+- Wagmi
+- RainbowKit / WalletConnect
+- Viem
+- Tailwind CSS
+- Pinata + IPFS
+
+## Environment
+
+```env
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_reown_project_id
+NEXT_PUBLIC_POAP_DAPP_ADDRESS=0x506001C295d80944DE4ed4015af03Bb0E348aeB5
+NEXT_PUBLIC_POAP_FACTORY_ADDRESS=0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06
+NEXT_PUBLIC_POAP_FACTORY_DEPLOY_TX=0x62e6c6b2468aee10741f705f30e7917d365f9981261a255da9d2e5e0c9a1fcca
+
+PINATA_JWT=your_server_side_pinata_jwt
 ```
+
+`PINATA_JWT` is server-side only and must never use the `NEXT_PUBLIC_` prefix.
+
+The WalletConnect/Reown project ID is intentionally shown as a placeholder in documentation rather than hardcoded.
+
+## Development
 
 Frontend:
 
@@ -70,18 +162,27 @@ npm run build
 npm run dev
 ```
 
-See `BOHR_PILOT.md`, `smart-contract/readme.md`, `frontend/readme.md` and `frontend/STITCH_INTEGRATION.md` for implementation details.
+Contracts:
 
-## Pilot scope
+```bash
+cd smart-contract
+npm ci
+npm test
+```
 
-The current controller is intentionally single-event. A future multi-event controller should use event-scoped configuration and claim state before one controller is reused for independent simultaneous events.
+## Security notes
 
-## Reusable event controller (V2)
+- Only claim-code hashes are stored on-chain.
+- Claim calldata still reveals the plaintext code once a claim transaction is submitted.
+- Duplicate claims are tracked per EventPOAP collection.
+- Event NFTs are soulbound.
+- Privileged functions are owner/admin restricted.
+- Pinata credentials stay server-side.
+- Transaction errors are normalized into user-friendly UI messages.
+- The current V2 controller is not upgradeable. Upgradeability can be introduced later as a separate production architecture decision.
 
-The Bohr pilot now uses a reusable claim-controller design. Claim state is scoped by event NFT collection (`hasClaimed[nft][attendee]`), so one wallet may claim once for Event A and later claim once for Event B.
+## Historical controller
 
-A new event is activated atomically with `activateEvent(nft, codeHash, deadline)`. This immediately replaces the prior active event and its claim settings in one transaction. Updating the code/deadline with `configureClaim` affects only the currently active event and does not reset existing claims for that NFT.
+The first Bohr controller at `0x1807F7c4984f5188e948C2e828fadE1b2F0011eb` used global claim state and was suitable only for a single event.
 
-The existing `POAPFactory` remains the permanent registry source for event collections. The My POAPs page reads `EventPOAPCreated` and ERC-721 `Transfer` mint events, so previously claimed credentials remain visible even after another event becomes active.
-
-The first deployed Bohr controller is not upgradeable. V2 therefore requires a new controller deployment. Existing EventPOAPs and already minted NFTs remain valid; new collections must be created with the V2 controller as their minter. Upgradeability (for example UUPS with timelocked governance and storage-layout tests) can be assessed separately before a production mainnet version.
+It remains relevant for already-created historical collections whose immutable `minter` points to that controller. New events should use V2.
