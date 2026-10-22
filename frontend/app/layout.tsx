@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import AppHeader from "../components/AppHeader";
+import AppFooter from "../components/AppFooter";
 
 export const metadata: Metadata = {
   title: "PEOPLE — Verifiable Event Attendance",
@@ -11,10 +12,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-background font-sans antialiased">
+      <body className="flex min-h-screen flex-col bg-background font-sans antialiased">
         <Providers>
           <AppHeader />
           {children}
+          <AppFooter />
         </Providers>
       </body>
     </html>
