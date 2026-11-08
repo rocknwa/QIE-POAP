@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { keccak256, toBytes, zeroAddress, zeroHash } from "viem";
-import { POAP_DAPP_ADDRESS, poapDappAbi } from "../constants";
+import { poapDappAbi } from "../constants";
+import { POAP_DAPP_ADDRESS, botChain, BOT_CHAIN_NAME, txUrl } from "../botchain";
+import { useBotChain } from "../../lib/useBotChain";
 import { transactionErrorMessage } from "../../lib/transactionError";
 
 export default function ClaimContent() {
@@ -13,15 +15,17 @@ export default function ClaimContent() {
   const [mounted, setMounted] = useState(false);
   const { address, isConnected } = useAccount();
   const { data: hash, isPending, writeContractAsync } = useWriteContract();
-  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash, confirmations: 1 });
+  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash, chainId: botChain.id, confirmations: 1 });
+
+  const { ensureBotChain } = useBotChain();
 
   useEffect(() => setMounted(true), []);
 
-  const { data: activeNft } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
-  const { data: deadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
-  const { data: currentCodeHash, isLoading: codeHashLoading } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "codeHash", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: activeNft } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: deadline } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: currentCodeHash, isLoading: codeHashLoading } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "codeHash", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
   const { data: claimed, refetch: refetchClaimed } = useReadContract({
-    address: POAP_DAPP_ADDRESS!,
+    chainId: botChain.id, address: POAP_DAPP_ADDRESS!,
     abi: poapDappAbi,
     functionName: "hasClaimed",
     args: activeNft && activeNft !== zeroAddress && address ? [activeNft, address] : undefined,
@@ -43,7 +47,7 @@ export default function ClaimContent() {
   async function claim() {
     setUiError("");
     if (!isConnected) return setUiError("Connect the wallet that should receive the attendance credential.");
-    if (!POAP_DAPP_ADDRESS) return setUiError("The Bohr claim contract is not configured.");
+    if (!POAP_DAPP_ADDRESS) return setUiError("The BOT Chain claim contract is not configured.");
     if (!eventActive) return setUiError("There is no active event to claim right now.");
     if (expired) return setUiError("The claim period for this event has ended.");
     if (claimed) return setUiError("This wallet has already claimed this event.");
@@ -57,7 +61,9 @@ export default function ClaimContent() {
     }
 
     try {
+      await ensureBotChain();
       await writeContractAsync({
+        chainId: botChain.id,
         address: POAP_DAPP_ADDRESS,
         abi: poapDappAbi,
         functionName: "mint",
@@ -79,7 +85,7 @@ export default function ClaimContent() {
           <div className="mt-8 space-y-3">
             <div className="flex items-center gap-3 text-sm text-slate-400"><span className="grid h-8 w-8 place-items-center rounded-lg bg-violet/10 text-primary"><span className="material-symbols-outlined text-lg">lock</span></span> The credential cannot be transferred after minting.</div>
             <div className="flex items-center gap-3 text-sm text-slate-400"><span className="grid h-8 w-8 place-items-center rounded-lg bg-violet/10 text-primary"><span className="material-symbols-outlined text-lg">verified</span></span> Each wallet can claim once per event collection.</div>
-            <div className="flex items-center gap-3 text-sm text-slate-400"><span className="grid h-8 w-8 place-items-center rounded-lg bg-violet/10 text-primary"><span className="material-symbols-outlined text-lg">public</span></span> Claims are verified on Bohr Testnet, chain 968.</div>
+            <div className="flex items-center gap-3 text-sm text-slate-400"><span className="grid h-8 w-8 place-items-center rounded-lg bg-violet/10 text-primary"><span className="material-symbols-outlined text-lg">public</span></span> Claims are verified on {BOT_CHAIN_NAME}, chain {botChain.id}.</div>
           </div>
         </section>
 
@@ -90,7 +96,7 @@ export default function ClaimContent() {
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-black/20 p-4"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Network</p><p className="mt-1 text-sm font-semibold text-white">Bohr Testnet · 968</p></div>
+            <div className="rounded-xl bg-black/20 p-4"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Network</p><p className="mt-1 text-sm font-semibold text-white">{BOT_CHAIN_NAME} · {botChain.id}</p></div>
             <div className="rounded-xl bg-black/20 p-4"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Claim deadline</p><p className="mt-1 text-sm font-semibold text-white">{deadlineDate ? deadlineDate.toLocaleString() : "Not configured"}</p></div>
           </div>
 
@@ -101,9 +107,9 @@ export default function ClaimContent() {
 
           {mounted && claimed && <div className="mt-4 rounded-xl border border-success/20 bg-success/10 p-4 text-sm text-success">This wallet has already claimed this event.</div>}
           {uiError && <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">{uiError}</div>}
-          {isSuccess && <div className="mt-4 rounded-xl border border-success/20 bg-success/10 p-4"><p className="font-bold text-success">Attendance verified</p><p className="mt-1 text-sm text-slate-300">Your PEOPLE POAP has been minted to your wallet.</p></div>}
+          {isSuccess && <div className="mt-4 rounded-xl border border-success/20 bg-success/10 p-4"><p className="font-bold text-success">Attendance verified</p><p className="mt-1 text-sm text-slate-300">Your PEOPLE POAP has been minted to your wallet.</p>{hash && <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm font-semibold text-primary underline">View transaction on BOTScan</a>}</div>}
 
-          <button type="button" onClick={claim} disabled={isPending || confirming || codeHashLoading || !eventActive || expired || Boolean(claimed)} className="people-button-primary mt-6 w-full py-3.5">{isPending ? "Confirm in wallet…" : confirming ? "Confirming on Bohr…" : claimed ? "Already claimed" : "Claim POAP"}<span className="material-symbols-outlined text-lg">verified</span></button>
+          <button type="button" onClick={claim} disabled={isPending || confirming || codeHashLoading || !eventActive || expired || Boolean(claimed)} className="people-button-primary mt-6 w-full py-3.5">{isPending ? "Confirm in wallet…" : confirming ? "Confirming on BOT Chain…" : claimed ? "Already claimed" : "Claim POAP"}<span className="material-symbols-outlined text-lg">verified</span></button>
           {isSuccess && <Link href="/events" className="people-button-secondary mt-3 w-full">View My POAPs</Link>}
           <p className="mt-4 text-center text-xs leading-5 text-slate-500">The claim transaction is public. Do not reuse a sensitive password as an event code.</p>
         </section>
