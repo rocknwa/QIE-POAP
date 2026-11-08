@@ -1,4 +1,4 @@
-
+ 
 const ecosystem = [
   ["BOT Chain", "https://botchain.ai"],
   ["BOT Chain Explorer", "https://scan.botchain.ai"],
@@ -14,7 +14,7 @@ export default function AppFooter() {
           </span>
           <div>
             <p className="text-sm font-extrabold tracking-tight text-white">PEOPLE</p>
-            <p className="text-xs text-slate-500">Verifiable event attendance on Bohr.</p>
+            <p className="text-xs text-slate-500">Verifiable event attendance on BOT Chain.</p>
           </div>
         </div>
 
