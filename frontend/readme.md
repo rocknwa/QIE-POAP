@@ -1,6 +1,6 @@
 # PEOPLE Frontend
 
-The PEOPLE frontend is the organizer and attendee interface for the Bohr attendance-NFT pilot.
+The PEOPLE frontend is the organizer and attendee interface on BOT Chain Mainnet.
 
 It is built around the actual dApp flow rather than around raw smart-contract controls.
 
@@ -8,10 +8,15 @@ It is built around the actual dApp flow rather than around raw smart-contract co
 
 | Setting | Value |
 | --- | --- |
-| Network | Bohr Testnet |
-| Chain ID | `968` |
-| `POAPDapp` V2 | `0x506001C295d80944DE4ed4015af03Bb0E348aeB5` |
-| `POAPFactory` | `0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06` |
+| Network | BOT Chain Mainnet |
+| Chain ID | `677` |
+| RPC | `https://rpc.botchain.ai` |
+| Currency | `BOT` (18 decimals) |
+| Explorer | [BOTScan](https://scan.botchain.ai) |
+| `POAPDapp` | [`0x5E387971E4e17A0A09fb53E9875fA8291518Ad1A`](https://scan.botchain.ai/address/0x5E387971E4e17A0A09fb53E9875fA8291518Ad1A) |
+| `POAPFactory` | [`0x7149b07fEeE078C2ff0EbF60c1fe772b3A34596b`](https://scan.botchain.ai/address/0x7149b07fEeE078C2ff0EbF60c1fe772b3A34596b) |
+
+Chain and contract configuration lives in `app/botchain.ts`. The addresses and the factory deploy block (29355852) are fixed in code, not read from environment variables. If your host still has `NEXT_PUBLIC_POAP_DAPP_ADDRESS`, `NEXT_PUBLIC_POAP_FACTORY_ADDRESS`, `NEXT_PUBLIC_POAP_FACTORY_DEPLOY_TX` or `NEXT_PUBLIC_POAP_FACTORY_DEPLOY_BLOCK` set from the old Bohr pilot, they are ignored and can be deleted.
 
 ## Frontend flow
 
@@ -112,10 +117,6 @@ Create `frontend/.env.local`:
 
 ```env
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_reown_project_id
-NEXT_PUBLIC_POAP_DAPP_ADDRESS=0x506001C295d80944DE4ed4015af03Bb0E348aeB5
-NEXT_PUBLIC_POAP_FACTORY_ADDRESS=0xAdf4d9B286D4c757d5aAce5EE544318F895A0E06
-NEXT_PUBLIC_POAP_FACTORY_DEPLOY_TX=0x62e6c6b2468aee10741f705f30e7917d365f9981261a255da9d2e5e0c9a1fcca
-
 PINATA_JWT=your_pinata_jwt
 ```
 
@@ -140,15 +141,3 @@ npm run dev
 The interface is designed for desktop, tablet and mobile.
 
 Key layouts collapse to single-column flows on small screens, wallet/admin controls remain touch-friendly, and POAP cards use a compact gallery with a dedicated detail modal rather than oversized artwork cards.
-
-## Historical controller
-
-The original Bohr controller is:
-
-`0x1807F7c4984f5188e948C2e828fadE1b2F0011eb`
-
-New collections should use the V2 controller:
-
-`0x506001C295d80944DE4ed4015af03Bb0E348aeB5`
-
-because `EventPOAP.minter` is immutable.
