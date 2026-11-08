@@ -35,6 +35,5 @@ export const poapFactoryAbi = [
   ] }
 ] as const;
 
-export const POAP_DAPP_ADDRESS = process.env.NEXT_PUBLIC_POAP_DAPP_ADDRESS as `0x${string}` | undefined;
-export const POAP_FACTORY_ADDRESS = process.env.NEXT_PUBLIC_POAP_FACTORY_ADDRESS as `0x${string}` | undefined;
-export const POAP_FACTORY_DEPLOY_TX = (process.env.NEXT_PUBLIC_POAP_FACTORY_DEPLOY_TX || "0x62e6c6b2468aee10741f705f30e7917d365f9981261a255da9d2e5e0c9a1fcca") as `0x${string}`;
+export { POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS } from "./botchain";
+
