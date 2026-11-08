@@ -124,12 +124,28 @@ export function transactionErrorMessage(
   }
 
   if (
+    message.includes("chainmismatch") ||
+    message.includes("does not match the target chain") ||
+    message.includes("wrong network") ||
+    message.includes("unsupported chain")
+  ) {
+    return "Please switch your wallet to BOT Chain Mainnet.";
+  }
+
+  if (
+    message.includes("unrecognized chain") ||
+    message.includes("4902")
+  ) {
+    return "BOT Chain Mainnet isn't added to your wallet yet. Approve the add-network prompt and try again.";
+  }
+
+  if (
     message.includes("network") ||
     message.includes("rpc") ||
     message.includes("timeout") ||
     message.includes("failed to fetch")
   ) {
-    return "The Bohr network could not be reached. Please try again.";
+    return "The BOT Chain network could not be reached. Please try again.";
   }
 
   return fallback;

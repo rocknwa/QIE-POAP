@@ -5,7 +5,9 @@ import { useAccount, usePublicClient, useReadContract, useWriteContract } from "
 import { isAddress, keccak256, parseEventLogs, toBytes, zeroAddress, zeroHash } from "viem";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { poapDappAbi, poapFactoryAbi, POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS } from "../constants";
+import { poapDappAbi, poapFactoryAbi } from "../constants";
+import { POAP_DAPP_ADDRESS, POAP_FACTORY_ADDRESS, botChain, BOT_CHAIN_NAME, txUrl } from "../botchain";
+import { useBotChain } from "../../lib/useBotChain";
 import { transactionErrorMessage } from "../../lib/transactionError";
 
 function shortAddress(value?: string) {
@@ -15,7 +17,8 @@ function shortAddress(value?: string) {
 
 export default function Dashboard() {
   const { address, isConnected } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId: botChain.id });
+  const { ensureBotChain } = useBotChain();
   const { writeContractAsync } = useWriteContract();
   const [mounted, setMounted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -39,13 +42,13 @@ export default function Dashboard() {
 
   const dappEnabled = Boolean(POAP_DAPP_ADDRESS && address);
   const factoryEnabled = Boolean(POAP_FACTORY_ADDRESS && address);
-  const { data: owner } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "owner", query: { enabled: dappEnabled } });
-  const { data: admin } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled: dappEnabled } });
-  const { data: factoryOwner } = useReadContract({ address: POAP_FACTORY_ADDRESS!, abi: poapFactoryAbi, functionName: "owner", query: { enabled: factoryEnabled } });
-  const { data: factoryAdmin } = useReadContract({ address: POAP_FACTORY_ADDRESS!, abi: poapFactoryAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled: factoryEnabled } });
-  const { data: currentNft, refetch: refetchNft } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
-  const { data: currentDeadline, refetch: refetchDeadline } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
-  const { data: currentCodeHash, refetch: refetchCodeHash } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "codeHash", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: owner } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "owner", query: { enabled: dappEnabled } });
+  const { data: admin } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled: dappEnabled } });
+  const { data: factoryOwner } = useReadContract({ chainId: botChain.id, address: POAP_FACTORY_ADDRESS!, abi: poapFactoryAbi, functionName: "owner", query: { enabled: factoryEnabled } });
+  const { data: factoryAdmin } = useReadContract({ chainId: botChain.id, address: POAP_FACTORY_ADDRESS!, abi: poapFactoryAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled: factoryEnabled } });
+  const { data: currentNft, refetch: refetchNft } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "poapNftContract", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: currentDeadline, refetch: refetchDeadline } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "claimDeadline", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
+  const { data: currentCodeHash, refetch: refetchCodeHash } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "codeHash", query: { enabled: Boolean(POAP_DAPP_ADDRESS) } });
 
   const isDappOwner = Boolean(address && owner?.toLowerCase() === address.toLowerCase());
   const isFactoryOwner = Boolean(address && factoryOwner?.toLowerCase() === address.toLowerCase());
@@ -71,6 +74,7 @@ export default function Dashboard() {
 
     setBusy(true);
     try {
+      await ensureBotChain();
       const form = new FormData();
       form.append("image", image);
       form.append("name", name.trim());
@@ -79,13 +83,13 @@ export default function Dashboard() {
       const uploaded = await upload.json();
       if (!upload.ok) throw new Error(uploaded.error || "Metadata upload failed");
 
-      const hash = await writeContractAsync({ address: POAP_FACTORY_ADDRESS, abi: poapFactoryAbi, functionName: "createEventPOAP", args: [name.trim(), symbol.trim(), uploaded.metadataURI, POAP_DAPP_ADDRESS] });
+      const hash = await writeContractAsync({ chainId: botChain.id, address: POAP_FACTORY_ADDRESS, abi: poapFactoryAbi, functionName: "createEventPOAP", args: [name.trim(), symbol.trim(), uploaded.metadataURI, POAP_DAPP_ADDRESS] });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       const logs = parseEventLogs({ abi: poapFactoryAbi, logs: receipt.logs, eventName: "EventPOAPCreated" });
       const nft = logs[0]?.args.poap;
       if (!nft) throw new Error("Factory event did not contain the NFT address");
       setCreatedNft(nft);
-      toast.success("Event credential created. Activate it when you are ready to accept claims.");
+      toast.success(<span>{"Event credential created. Activate it when you are ready to accept claims."} <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>View on BOTScan</a></span>);
     } catch (error) {
       toast.error(transactionErrorMessage(error, "Unable to create the event NFT. Please try again."));
     } finally { setBusy(false); }
@@ -100,15 +104,18 @@ export default function Dashboard() {
 
     setBusy(true);
     try {
+      await ensureBotChain();
       const isActivatingNewEvent = Boolean(createdNft);
       const hash = isActivatingNewEvent
         ? await writeContractAsync({
+            chainId: botChain.id,
             address: POAP_DAPP_ADDRESS,
             abi: poapDappAbi,
             functionName: "activateEvent",
             args: [createdNft as `0x${string}`, hashOfCode, unixDeadline],
           })
         : await writeContractAsync({
+            chainId: botChain.id,
             address: POAP_DAPP_ADDRESS,
             abi: poapDappAbi,
             functionName: "configureClaim",
@@ -119,9 +126,9 @@ export default function Dashboard() {
       setClaimCode("");
       if (isActivatingNewEvent) {
         setCreatedNft("");
-        toast.success("New event activated. It immediately replaced the previous active event.");
+        toast.success(<span>{"New event activated. It immediately replaced the previous active event."} <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>View on BOTScan</a></span>);
       } else {
-        toast.success(claimCodeConfigured ? "Claim code and deadline updated for the active event." : "Claim code and deadline configured for the active event.");
+        toast.success(<span>{claimCodeConfigured ? "Claim code and deadline updated for the active event." : "Claim code and deadline configured for the active event."} <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>View on BOTScan</a></span>);
       }
     } catch (error) { toast.error(transactionErrorMessage(error, "Unable to update the event claim settings. Please try again.")); }
     finally { setBusy(false); }
@@ -132,10 +139,11 @@ export default function Dashboard() {
     if (!window.confirm("Stop claims for the active event? The NFT can be reconfigured later by an admin.")) return;
     setBusy(true);
     try {
-      const hash = await writeContractAsync({ address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "stopMinting" });
+      await ensureBotChain();
+      const hash = await writeContractAsync({ chainId: botChain.id, address: POAP_DAPP_ADDRESS, abi: poapDappAbi, functionName: "stopMinting" });
       await publicClient.waitForTransactionReceipt({ hash });
       await Promise.all([refetchNft(), refetchDeadline(), refetchCodeHash()]);
-      toast.success("Minting stopped.");
+      toast.success(<span>{"Minting stopped."} <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>View on BOTScan</a></span>);
     } catch (error) { toast.error(transactionErrorMessage(error, "Unable to stop minting. Please try again.")); }
     finally { setBusy(false); }
   }
@@ -150,6 +158,7 @@ export default function Dashboard() {
 
     setBusy(true);
     try {
+      await ensureBotChain();
       let hash: `0x${string}`;
 
       if (scope === "dapp") {
@@ -160,12 +169,14 @@ export default function Dashboard() {
         hash =
           action === "add"
             ? await writeContractAsync({
+                chainId: botChain.id,
                 address: POAP_DAPP_ADDRESS,
                 abi: poapDappAbi,
                 functionName: "addAdmin",
                 args: [target],
               })
             : await writeContractAsync({
+                chainId: botChain.id,
                 address: POAP_DAPP_ADDRESS,
                 abi: poapDappAbi,
                 functionName: "removeAdmin",
@@ -179,12 +190,14 @@ export default function Dashboard() {
         hash =
           action === "add"
             ? await writeContractAsync({
+                chainId: botChain.id,
                 address: POAP_FACTORY_ADDRESS,
                 abi: poapFactoryAbi,
                 functionName: "addAdmin",
                 args: [target],
               })
             : await writeContractAsync({
+                chainId: botChain.id,
                 address: POAP_FACTORY_ADDRESS,
                 abi: poapFactoryAbi,
                 functionName: "removeAdmin",
@@ -193,7 +206,7 @@ export default function Dashboard() {
       }
 
       await publicClient.waitForTransactionReceipt({ hash });
-      toast.success(`${scope === "dapp" ? "Claim" : "Factory"} admin ${action === "add" ? "added" : "removed"}.`);
+      toast.success(<span>{`${scope === "dapp" ? "Claim" : "Factory"} admin ${action === "add" ? "added" : "removed"}.`} <a href={txUrl(hash)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline" }}>View on BOTScan</a></span>);
     } catch (error) {
       toast.error(transactionErrorMessage(error, "Unable to update admin access. Please try again."));
     } finally {
@@ -201,13 +214,13 @@ export default function Dashboard() {
     }
   }
 
-  if (!POAP_DAPP_ADDRESS || !POAP_FACTORY_ADDRESS) return <main className="people-shell py-20"><div className="people-card p-8 text-white">Configure the deployed Bohr contract addresses in the frontend environment before opening the dashboard.</div></main>;
+  if (!POAP_DAPP_ADDRESS || !POAP_FACTORY_ADDRESS) return <main className="people-shell py-20"><div className="people-card p-8 text-white">The BOT Chain contract addresses are not configured.</div></main>;
 
   if (!mounted) return <main className="people-shell py-20"><div className="h-72 animate-pulse rounded-2xl bg-white/[0.03]" /></main>;
 
   if (!isConnected) return <main className="people-shell py-20"><div className="mx-auto max-w-xl people-card p-8 text-center"><span className="material-symbols-outlined text-4xl text-primary">account_balance_wallet</span><h1 className="mt-4 text-2xl font-bold text-white">Connect an organizer wallet</h1><p className="mt-3 text-sm leading-6 text-slate-400">The dashboard only exposes event creation and claim controls to authorized owner/admin wallets.</p></div></main>;
 
-  if (!canAdmin) return <main className="people-shell py-20"><div className="mx-auto max-w-xl people-card p-8 text-center"><span className="material-symbols-outlined text-4xl text-red-300">lock_person</span><h1 className="mt-4 text-2xl font-bold text-white">You don’t have organizer access.</h1><p className="mt-3 text-sm leading-6 text-slate-400">This wallet is not an owner or approved admin for the PEOPLE contracts.</p></div></main>;
+  if (!canAdmin) return <main className="people-shell py-20"><div className="mx-auto max-w-xl people-card p-8 text-center"><span className="material-symbols-outlined text-4xl text-red-300">lock_person</span><h1 className="mt-4 text-2xl font-bold text-white">You don’t have organizer access.</h1><p className="mt-3 text-sm leading-6 text-slate-400">This wallet is not an owner or approved admin for the PEOPLE contracts.</p><p className="mt-5 text-sm font-semibold text-white">Contact the PEOPLE team for organizer access</p><div className="mt-3 flex flex-col items-center justify-center gap-3 sm:flex-row"><a href="mailto:anitherock44@gmail.com" className="people-button-primary inline-flex items-center gap-2 px-4 py-2 text-sm"><span className="material-symbols-outlined text-base">mail</span>anitherock44@gmail.com</a><a href="https://www.linkedin.com/in/therock-ani-13336224b/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"><span className="material-symbols-outlined text-base">open_in_new</span>LinkedIn</a></div></div></main>;
 
   return (
     <main className="pb-20 pt-10">
@@ -215,7 +228,7 @@ export default function Dashboard() {
       <div className="people-shell">
         <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
           <div><p className="people-kicker">Organizer workspace</p><h1 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Organizer Dashboard</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">Create the event credential, activate it for claims and manage the current attendance window.</p></div>
-          <div className="people-status"><span className="h-2 w-2 rounded-full bg-success" /> Bohr Testnet · Chain 968</div>
+          <div className="people-status"><span className="h-2 w-2 rounded-full bg-success" /> {BOT_CHAIN_NAME} · Chain {botChain.id}</div>
         </div>
 
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -230,7 +243,7 @@ export default function Dashboard() {
             <div className="flex items-start justify-between gap-4"><div><p className="people-kicker">Step 1</p><h2 className="mt-2 text-xl font-bold text-white">Create event attendance NFT</h2><p className="mt-2 text-sm leading-6 text-slate-400">Artwork and metadata are uploaded to IPFS through the server-side Pinata integration before the factory deploys the soulbound collection.</p></div><span className="material-symbols-outlined text-2xl text-primary">auto_awesome</span></div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-[1fr_180px]">
-              <div><label className="people-label">Event / NFT name</label><input className="people-input" placeholder="PEOPLE Bohr Pilot Attendance" value={name} onChange={e=>setName(e.target.value)} maxLength={120}/></div>
+              <div><label className="people-label">Event / NFT name</label><input className="people-input" placeholder="PEOPLE Attendance" value={name} onChange={e=>setName(e.target.value)} maxLength={120}/></div>
               <div><label className="people-label">Symbol</label><input className="people-input uppercase" placeholder="PEOPLE" value={symbol} onChange={e=>setSymbol(e.target.value)} maxLength={16}/></div>
             </div>
             <div className="mt-4"><label className="people-label">Description</label><textarea className="people-input min-h-28 resize-y" placeholder="Describe what this attendance credential verifies." value={description} onChange={e=>setDescription(e.target.value)} maxLength={1500}/></div>

@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, useReadContract } from "wagmi";
 import { useEffect, useState } from "react";
-import { POAP_DAPP_ADDRESS, poapDappAbi } from "../app/constants";
+import { poapDappAbi } from "../app/constants";
+import { POAP_DAPP_ADDRESS, botChain, BOT_CHAIN_NAME } from "../app/botchain";
 
 const nav = [
   ["Home", "/"],
@@ -20,8 +21,8 @@ export default function AppHeader() {
   useEffect(() => setMounted(true), []);
 
   const enabled = Boolean(mounted && POAP_DAPP_ADDRESS && address);
-  const { data: owner } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "owner", query: { enabled } });
-  const { data: admin } = useReadContract({ address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled } });
+  const { data: owner } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "owner", query: { enabled } });
+  const { data: admin } = useReadContract({ chainId: botChain.id, address: POAP_DAPP_ADDRESS!, abi: poapDappAbi, functionName: "admins", args: address ? [address] : undefined, query: { enabled } });
   const canAdmin = Boolean(address && (admin || owner?.toLowerCase() === address.toLowerCase()));
 
   return (
@@ -54,8 +55,8 @@ export default function AppHeader() {
         <div className="flex items-center gap-2">
           <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 sm:flex">
             <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60"/><span className="relative inline-flex h-2 w-2 rounded-full bg-success"/></span>
-            <span className="text-xs font-semibold text-slate-300">Bohr Testnet</span>
-            <span className="text-[10px] font-bold text-success">968</span>
+            <span className="text-xs font-semibold text-slate-300">{BOT_CHAIN_NAME}</span>
+            <span className="text-[10px] font-bold text-success">{botChain.id}</span>
           </div>
           {mounted ? <ConnectButton chainStatus="icon" showBalance={false} accountStatus={{ smallScreen: "avatar", largeScreen: "full" }} /> : <div className="h-10 w-28 rounded-xl bg-white/[0.05]" />}
         </div>

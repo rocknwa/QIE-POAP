@@ -9,7 +9,7 @@ const steps = [
 ];
 
 const features = [
-  ["verified_user", "Verifiable attendance", "Proof lives on-chain and can be checked independently on the Bohr explorer."],
+  ["verified_user", "Verifiable attendance", "Proof lives on-chain and can be checked independently on BOTScan."],
   ["lock", "Soulbound credentials", "Attendance NFTs are non-transferable, preserving the integrity of participation records."],
   ["image", "Event-specific identity", "Each event gets its own artwork, name, symbol and IPFS-backed metadata."],
   ["shield_lock", "Controlled claims", "Hashed claim credentials, explicit deadlines and duplicate-claim protection are enforced by the contract."],
@@ -23,7 +23,7 @@ export default function HomeContent() {
         <div className="people-shell relative grid min-h-[680px] items-center gap-14 py-20 lg:grid-cols-[1.05fr_.95fr] lg:py-24">
           <div>
             <div className="mb-6 flex flex-wrap items-center gap-2">
-              <span className="people-status"><span className="h-1.5 w-1.5 rounded-full bg-success" /> Live on Bohr Testnet</span>
+              <span className="people-status"><span className="h-1.5 w-1.5 rounded-full bg-success" /> Live on BOT Chain Mainnet</span>
               <span className="people-status">Soulbound ERC-721</span>
             </div>
             <p className="people-kicker mb-4">Proof of participation</p>
@@ -56,11 +56,11 @@ export default function HomeContent() {
                 </div>
                 <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between">
                   <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-400">Soulbound credential</p><p className="mt-1 text-lg font-bold text-white">Proof that you were there.</p></div>
-                  <span className="rounded-lg bg-black/40 px-2.5 py-1.5 text-xs font-bold text-primary backdrop-blur">#968</span>
+                  <span className="rounded-lg bg-black/40 px-2.5 py-1.5 text-xs font-bold text-primary backdrop-blur">#677</span>
                 </div>
               </div>
               <div className="mt-5 grid grid-cols-3 gap-2">
-                {[['Network','Bohr'],['Token','BOT'],['Standard','ERC-721']].map(([k,v]) => <div key={k} className="rounded-xl bg-white/[0.035] p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{k}</p><p className="mt-1 text-xs font-bold text-slate-200">{v}</p></div>)}
+                {[['Network','BOT Chain'],['Token','BOT'],['Standard','ERC-721']].map(([k,v]) => <div key={k} className="rounded-xl bg-white/[0.035] p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{k}</p><p className="mt-1 text-xs font-bold text-slate-200">{v}</p></div>)}
               </div>
             </div>
           </div>

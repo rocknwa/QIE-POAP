@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAccount, usePublicClient } from "wagmi";
 import { parseAbiItem, zeroAddress } from "viem";
-import { POAP_FACTORY_ADDRESS, POAP_FACTORY_DEPLOY_TX } from "../constants";
+import { POAP_FACTORY_ADDRESS, botChain, BOT_CHAIN_NAME, tokenUrl } from "../botchain";
+import { factoryFromBlock } from "../../lib/factoryFromBlock";
 
 const eventPoapAbi = [
   { type: "function", name: "tokenURI", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ type: "string" }] },
@@ -17,7 +18,6 @@ const transferEvent = parseAbiItem(
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 );
 
-const EXPLORER = "https://scan.bohr.life";
 const DEFAULT_IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 
 function ipfsToHttp(uri) {
@@ -32,7 +32,7 @@ function ipfsToHttp(uri) {
 
 export default function Events() {
   const { address, isConnected } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId: botChain.id });
   const [mounted, setMounted] = useState(false);
   const [poaps, setPoaps] = useState([]);
   const [collectionCount, setCollectionCount] = useState(0);
@@ -53,13 +53,12 @@ export default function Events() {
     setError("");
 
     try {
-      // Derive the factory deployment block from its public deployment transaction.
-      // This keeps the log query narrow instead of scanning Bohr from genesis.
-      const factoryReceipt = await publicClient.getTransactionReceipt({ hash: POAP_FACTORY_DEPLOY_TX });
+      // Start at the factory deployment block so the log query stays narrow
+      // instead of scanning BOT Chain from genesis.
       const createdLogs = await publicClient.getLogs({
         address: POAP_FACTORY_ADDRESS,
         event: eventCreatedEvent,
-        fromBlock: factoryReceipt.blockNumber,
+        fromBlock: factoryFromBlock(),
         toBlock: "latest",
       });
 
@@ -166,10 +165,10 @@ export default function Events() {
           </div>
         )}
 
-        {!POAP_FACTORY_ADDRESS && <StateCard icon="warning" title="Factory not configured" body="The Bohr PEOPLE factory address is missing from the frontend environment." />}
+        {!POAP_FACTORY_ADDRESS && <StateCard icon="warning" title="Factory not configured" body="The PEOPLE factory address is missing from the frontend configuration." />}
         {mounted && POAP_FACTORY_ADDRESS && !isConnected && <StateCard icon="account_balance_wallet" title="Connect your wallet" body="Your complete PEOPLE attendance history will appear here after you connect the wallet that claimed the credentials." />}
         {error && <StateCard icon="error" title="Could not load your POAP history" body={error} danger />}
-        {loading && <StateCard icon="progress_activity" title="Reading attendance history" body="Discovering PEOPLE event collections on Bohr and resolving your claimed NFT metadata from IPFS…" spinning />}
+        {loading && <StateCard icon="progress_activity" title="Reading attendance history" body="Discovering PEOPLE event collections on BOT Chain and resolving your claimed NFT metadata from IPFS…" spinning />}
         {mounted && !loading && isConnected && !error && poaps.length === 0 && <StateCard icon="wallet" title="No attendance NFTs yet" body="Claim a PEOPLE POAP at a participating event and it will appear here permanently." action={<Link href="/claim" className="people-button-primary">Claim a POAP</Link>} />}
 
         {mounted && !loading && poaps.length > 0 && (
@@ -293,7 +292,7 @@ export default function Events() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Network</p>
-                      <p className="mt-1 font-semibold text-white">Bohr Testnet · 968</p>
+                      <p className="mt-1 font-semibold text-white">{BOT_CHAIN_NAME} · {botChain.id}</p>
                     </div>
                   </div>
 
@@ -304,12 +303,12 @@ export default function Events() {
                   )}
 
                   <a
-                    href={`${EXPLORER}/token/${selectedPoap.collection}/instance/${selectedPoap.tokenId.toString()}`}
+                    href={tokenUrl(selectedPoap.collection, selectedPoap.tokenId.toString())}
                     target="_blank"
                     rel="noreferrer"
                     className="people-button-primary mt-6 w-full"
                   >
-                    View NFT on Bohr Explorer
+                    View NFT on BOTScan
                     <span className="material-symbols-outlined text-base">open_in_new</span>
                   </a>
                 </div>
