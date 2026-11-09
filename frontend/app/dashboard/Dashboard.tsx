@@ -80,7 +80,7 @@ export default function Dashboard() {
       form.append("image", image);
       form.append("name", name.trim());
       form.append("description", description.trim());
-      const upload = await fetch("/api/ipfs/event-metadata", { method: "POST", body: form });
+      const upload = await fetch("/api/ipfs/event-metadata/", { method: "POST", body: form });
       const uploaded = await upload.json();
       if (!upload.ok) throw new Error(uploaded.error || "Metadata upload failed");
 
