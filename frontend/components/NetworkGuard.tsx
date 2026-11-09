@@ -19,7 +19,7 @@ export default function NetworkGuard() {
           <p className="text-xs text-red-100/80">PEOPLE runs on {BOT_CHAIN_NAME}. Switch your wallet to continue.</p>
           {error && <p className="mt-1 text-xs text-red-200">{transactionErrorMessage(error, `Could not switch to ${BOT_CHAIN_NAME}.`)}</p>}
         </div>
-        <button type="button" onClick={() => switchChain({ chainId: botChain.id })} disabled={isPending} className="people-button-primary whitespace-nowrap px-4 py-2 text-sm">
+        <button type="button" onClick={() => switchChain({ chainId: botChain.id })} disabled={isPending} className="whitespace-nowrap rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-500 disabled:opacity-50">
           {isPending ? "Switching…" : `Switch to ${BOT_CHAIN_NAME}`}
         </button>
       </div>

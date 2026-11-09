@@ -12,6 +12,8 @@ const nav = [
   ["Home", "/"],
   ["Claim", "/claim"],
   ["My POAPs", "/events"],
+  ["Docs", "/docs"],
+  ["About", "/about"],
 ] as const;
 
 export default function AppHeader() {
